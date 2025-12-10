@@ -91,11 +91,206 @@ const login = async () => {
     // Define ability rules based on role
     const roleName = userData.role?.name?.toLowerCase() || ''
     let userAbilityRules: { action: string; subject: string }[] = []
+    let redirectPath = '/dashboard'
 
     if (roleName === 'administrator') {
       userAbilityRules = [
         { action: 'manage', subject: 'all' },
       ]
+      redirectPath = '/dashboard'
+    }
+    else if (roleName === 'dean') {
+      userAbilityRules = [
+        { action: 'read', subject: 'Auth' },
+        { action: 'read', subject: 'DeanDashboard' },
+        { action: 'read', subject: 'DeanSurveys' },
+        { action: 'create', subject: 'DeanSurveys' },
+        { action: 'read', subject: 'DeanEvaluations' },
+        { action: 'read', subject: 'DeanTeachers' },
+        { action: 'read', subject: 'DeanStudents' },
+        { action: 'read', subject: 'DeanClasses' },
+      ]
+      redirectPath = '/dean/dashboard'
+
+      // Fetch the dean's teacher record to get dean_id
+      try {
+        console.log('Looking for teacher with user_id:', userData.id, 'or email:', userData.email)
+
+        // First try to find by user_id (direct link to Directus user)
+        let teacherRes = await ofetch('/items/Teachers', {
+          baseURL,
+          params: {
+            filter: { user_id: { _eq: userData.id } },
+            fields: ['id', 'first_name', 'last_name', 'position', 'Department', 'email', 'user_id'],
+            limit: 1,
+          },
+          headers: {
+            Authorization: `Bearer ${access_token}`,
+          },
+        })
+        console.log('Teacher lookup by user_id result:', teacherRes.data)
+
+        // If not found by user_id, try by email as fallback
+        if (!teacherRes.data?.[0]) {
+          console.log('No teacher found by user_id, trying email...')
+          teacherRes = await ofetch('/items/Teachers', {
+            baseURL,
+            params: {
+              filter: { email: { _eq: userData.email } },
+              fields: ['id', 'first_name', 'last_name', 'position', 'Department', 'email', 'user_id'],
+              limit: 1,
+            },
+            headers: {
+              Authorization: `Bearer ${access_token}`,
+            },
+          })
+          console.log('Teacher lookup by email result:', teacherRes.data)
+        }
+
+        // If still not found, try to link by matching first_name + last_name
+        if (!teacherRes.data?.[0] && userData.first_name && userData.last_name) {
+          console.log('No teacher found by email, trying name match...')
+          teacherRes = await ofetch('/items/Teachers', {
+            baseURL,
+            params: {
+              filter: {
+                _and: [
+                  { first_name: { _eq: userData.first_name } },
+                  { last_name: { _eq: userData.last_name } },
+                  { position: { _eq: 'Dean' } },
+                ],
+              },
+              fields: ['id', 'first_name', 'last_name', 'position', 'Department', 'email', 'user_id'],
+              limit: 1,
+            },
+            headers: {
+              Authorization: `Bearer ${access_token}`,
+            },
+          })
+          console.log('Teacher lookup by name result:', teacherRes.data)
+
+          // If found by name, update the teacher record with user_id for future logins
+          if (teacherRes.data?.[0] && !teacherRes.data[0].user_id) {
+            console.log('Linking teacher to user_id:', userData.id)
+            await ofetch(`/items/Teachers/${teacherRes.data[0].id}`, {
+              baseURL,
+              method: 'PATCH',
+              body: { user_id: userData.id },
+              headers: {
+                Authorization: `Bearer ${access_token}`,
+              },
+            })
+          }
+        }
+
+        if (teacherRes.data?.[0]) {
+          userData.dean_id = teacherRes.data[0].id
+          userData.department_id = teacherRes.data[0].Department
+          console.log('Set dean_id:', userData.dean_id, 'department_id:', userData.department_id)
+        }
+        else {
+          console.warn('No teacher found with user_id:', userData.id, 'email:', userData.email, 'or name:', userData.first_name, userData.last_name)
+        }
+      }
+      catch (err) {
+        console.error('Failed to fetch teacher record:', err)
+      }
+    }
+    else if (roleName === 'student') {
+      userAbilityRules = [
+        { action: 'read', subject: 'Auth' },
+        { action: 'read', subject: 'StudentDashboard' },
+        { action: 'read', subject: 'StudentSurveys' },
+        { action: 'create', subject: 'StudentSurveys' },
+      ]
+      redirectPath = '/student/dashboard'
+
+      // Fetch the student record to get student_id
+      try {
+        console.log('Looking for student with user_id:', userData.id, 'or email:', userData.email)
+
+        // First try to find by user_id (direct link to Directus user)
+        let studentRes = await ofetch('/items/students', {
+          baseURL,
+          params: {
+            filter: { user_id: { _eq: userData.id } },
+            fields: ['id', 'first_name', 'last_name', 'deparment_id', 'email', 'student_number', 'user_id'],
+            limit: 1,
+          },
+          headers: {
+            Authorization: `Bearer ${access_token}`,
+          },
+        })
+        console.log('Student lookup by user_id result:', studentRes.data)
+
+        // If not found by user_id, try by email
+        if (!studentRes.data?.[0]) {
+          console.log('No student found by user_id, trying email...')
+          studentRes = await ofetch('/items/students', {
+            baseURL,
+            params: {
+              filter: { email: { _eq: userData.email } },
+              fields: ['id', 'first_name', 'last_name', 'deparment_id', 'email', 'student_number', 'user_id'],
+              limit: 1,
+            },
+            headers: {
+              Authorization: `Bearer ${access_token}`,
+            },
+          })
+          console.log('Student lookup by email result:', studentRes.data)
+        }
+
+        // If not found by email, try by name matching
+        if (!studentRes.data?.[0] && userData.first_name && userData.last_name) {
+          console.log('No student found by email, trying name match...')
+          studentRes = await ofetch('/items/students', {
+            baseURL,
+            params: {
+              filter: {
+                _and: [
+                  { first_name: { _eq: userData.first_name } },
+                  { last_name: { _eq: userData.last_name } },
+                ],
+              },
+              fields: ['id', 'first_name', 'last_name', 'deparment_id', 'email', 'student_number', 'user_id'],
+              limit: 1,
+            },
+            headers: {
+              Authorization: `Bearer ${access_token}`,
+            },
+          })
+          console.log('Student lookup by name result:', studentRes.data)
+
+          // If found by name, update the student record with user_id for future logins
+          if (studentRes.data?.[0] && !studentRes.data[0].user_id) {
+            console.log('Linking student to user_id:', userData.id)
+            try {
+              await ofetch(`/items/students/${studentRes.data[0].id}`, {
+                baseURL,
+                method: 'PATCH',
+                body: { user_id: userData.id },
+                headers: {
+                  Authorization: `Bearer ${access_token}`,
+                },
+              })
+            }
+            catch (linkErr) {
+              console.warn('Could not link student to user_id:', linkErr)
+            }
+          }
+        }
+
+        if (studentRes.data?.[0]) {
+          userData.student_id = studentRes.data[0].id
+          console.log('Set student_id:', userData.student_id)
+        }
+        else {
+          console.warn('No student found with user_id:', userData.id, 'email:', userData.email, 'or name:', userData.first_name, userData.last_name)
+        }
+      }
+      catch (err) {
+        console.error('Failed to fetch student record:', err)
+      }
     }
     else {
       // Default permissions for other roles
@@ -110,9 +305,9 @@ const login = async () => {
     useCookie('userAbilityRules', cookieOptions).value = userAbilityRules
     ability.update(userAbilityRules)
 
-    // Redirect to dashboard
+    // Redirect based on role
     await nextTick(() => {
-      router.replace(route.query.to ? String(route.query.to) : '/dashboard')
+      router.replace(route.query.to ? String(route.query.to) : redirectPath)
     })
   }
   catch (err: any) {

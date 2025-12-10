@@ -245,9 +245,14 @@ const openDeleteDialog = (department: Department) => {
 // Save department (create or update)
 const saveDepartment = async () => {
   try {
+    // For M2M relationships, Directus needs junction table format
+    const teacherRelations = form.value.teacher_id.map(id => ({
+      Teachers_id: id,
+    }))
+
     const body: any = {
       name: form.value.name,
-      teacher_id: form.value.teacher_id,
+      teacher_id: teacherRelations,
     }
 
     if (isEditing.value && form.value.id) {

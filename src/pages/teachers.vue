@@ -78,7 +78,7 @@ const statusFilter = ref<string | null>(null)
 
 // Options
 const positionOptions = ['Dean', 'Professor']
-const genderOptions = ['Male', 'Female']
+const genderOptions = ['M', 'F']
 const statusOptions = ['Active', 'Draft', 'Archived']
 
 // Department options for filter dropdown
@@ -100,7 +100,8 @@ const isTeacherInDepartment = (teacher: Teacher, deptId: number): boolean => {
 
   const teacherIds = dept.teacher_id || []
   return teacherIds.some((t: any) => {
-    const tId = typeof t === 'object' ? (t.id || t.Teachers_id) : t
+    // Prioritize Teachers_id (the actual teacher ID from junction table)
+    const tId = typeof t === 'object' ? (t.Teachers_id || t.id) : t
     return tId === teacher.id
   })
 }
@@ -148,7 +149,8 @@ const getTeacherDepartments = (teacher: Teacher): string[] => {
     // Check if teacher is assigned to this department
     const teacherIds = dept.teacher_id || []
     const isAssigned = teacherIds.some((t: any) => {
-      const tId = typeof t === 'object' ? (t.id || t.Teachers_id) : t
+      // Prioritize Teachers_id (the actual teacher ID from junction table)
+      const tId = typeof t === 'object' ? (t.Teachers_id || t.id) : t
       return tId === teacher.id
     })
 
@@ -188,7 +190,7 @@ const fetchDepartments = async () => {
   try {
     const res = await $api('/items/Department', {
       params: {
-        fields: ['id', 'name.id', 'name.programName', 'name.programCode', 'teacher_id.id'],
+        fields: ['id', 'name.id', 'name.programName', 'name.programCode', 'teacher_id.id', 'teacher_id.Teachers_id'],
       },
     })
 
@@ -559,7 +561,7 @@ onMounted(() => {
           <div class="d-flex align-center gap-3">
             <VAvatar
               size="36"
-              :color="item.gender === 'Male' ? 'primary' : 'pink'"
+              :color="item.gender === 'M' ? 'primary' : 'pink'"
               variant="tonal"
             >
               <span class="text-body-1 font-weight-medium">

@@ -27,7 +27,6 @@ interface Student {
   last_name: string
   email: string
   gender: string
-  year_level: string
   birthdate: string
   deparment_id: Department | number | null
   class_id?: any[]
@@ -76,7 +75,6 @@ const form = ref({
   last_name: '',
   email: '',
   gender: '',
-  year_level: '',
   birthdate: '',
   deparment_id: null as number | null,
   class_id: [] as number[],
@@ -85,20 +83,15 @@ const form = ref({
 })
 
 const search = ref('')
-const yearLevelFilter = ref<string | null>(null)
 const statusFilter = ref<string | null>(null)
 
 // Options
-const genderOptions = ['Male', 'Female']
-const yearLevelOptions = ['First Year', 'Second Year', 'Third Year', 'Fourth Year']
+const genderOptions = ['M', 'F']
 const statusOptions = ['Active', 'Draft', 'Archived']
 
-// Filtered students by year level and status
+// Filtered students by status
 const filteredStudents = computed(() => {
   let result = students.value
-
-  if (yearLevelFilter.value)
-    result = result.filter(student => student.year_level === yearLevelFilter.value)
 
   if (statusFilter.value)
     result = result.filter(student => student.is_active === statusFilter.value)
@@ -110,7 +103,6 @@ const filteredStudents = computed(() => {
 const headers = [
   { title: 'Student No.', key: 'student_number', sortable: true },
   { title: 'Name', key: 'name', sortable: true },
-  { title: 'Year Level', key: 'year_level', sortable: true },
   { title: 'Department', key: 'department', sortable: false },
   { title: 'Gender', key: 'gender', sortable: true },
   { title: 'Status', key: 'status', sortable: true },
@@ -263,7 +255,6 @@ const openCreateDialog = () => {
     last_name: '',
     email: '',
     gender: '',
-    year_level: '',
     birthdate: '',
     deparment_id: null,
     class_id: [],
@@ -298,7 +289,6 @@ const openEditDialog = (student: Student) => {
     last_name: student.last_name,
     email: student.email,
     gender: student.gender,
-    year_level: student.year_level,
     birthdate: student.birthdate || '',
     deparment_id: deptId,
     class_id: classIds,
@@ -344,7 +334,6 @@ const saveStudent = async () => {
       last_name: form.value.last_name,
       email: form.value.email,
       gender: form.value.gender,
-      year_level: form.value.year_level,
       birthdate: form.value.birthdate || null,
       deparment_id: form.value.deparment_id,
       is_active: form.value.is_active,
@@ -383,12 +372,43 @@ const saveStudent = async () => {
   }
 }
 
+// Get class names for a student
+const getStudentClasses = (student: Student): string[] => {
+  if (!student.class_id || !Array.isArray(student.class_id))
+    return []
+
+  return student.class_id.map((c: any) => {
+    const classId = c.classes_id || c.id
+    const cls = classes.value.find(cl => cl.id === classId)
+    if (cls) {
+      const courseCode = typeof cls.course_id === 'object' && cls.course_id !== null
+        ? cls.course_id.courseCode
+        : ''
+      return courseCode ? `${cls.section} (${courseCode})` : cls.section
+    }
+    return ''
+  }).filter(Boolean)
+}
+
 // Delete student
 const deleteStudent = async () => {
   if (!selectedStudent.value?.id)
     return
 
   try {
+    // Delete the Directus user account if exists
+    if (selectedStudent.value.user_id) {
+      try {
+        await $api(`/users/${selectedStudent.value.user_id}`, {
+          method: 'DELETE',
+        })
+      }
+      catch (error) {
+        console.error('Failed to delete user account:', error)
+      }
+    }
+
+    // Delete the student record (junction table entries are automatically deleted)
     await $api(`/items/students/${selectedStudent.value.id}`, {
       method: 'DELETE',
     })
@@ -556,17 +576,6 @@ onMounted(() => {
           style="max-width: 300px;"
         />
         <VSelect
-          v-model="yearLevelFilter"
-          :items="yearLevelOptions"
-          label="Year Level"
-          density="compact"
-          variant="outlined"
-          hide-details
-          clearable
-          class="me-4"
-          style="max-width: 180px;"
-        />
-        <VSelect
           v-model="statusFilter"
           :items="statusOptions"
           label="Status"
@@ -618,7 +627,7 @@ onMounted(() => {
           <div class="d-flex align-center gap-3">
             <VAvatar
               size="36"
-              :color="item.gender === 'Male' ? 'primary' : 'pink'"
+              :color="item.gender === 'M' ? 'primary' : 'pink'"
               variant="tonal"
             >
               <span class="text-body-1 font-weight-medium">
@@ -630,10 +639,6 @@ onMounted(() => {
               <div class="text-caption text-medium-emphasis">{{ item.email }}</div>
             </div>
           </div>
-        </template>
-
-        <template #item.year_level="{ item }">
-          <span>{{ item.year_level }}</span>
         </template>
 
         <template #item.department="{ item }">
@@ -808,15 +813,6 @@ onMounted(() => {
             </VCol>
             <VCol cols="12" md="6">
               <VSelect
-                v-model="form.year_level"
-                label="Year Level"
-                :items="yearLevelOptions"
-                variant="outlined"
-                :rules="[v => !!v || 'Year level is required']"
-              />
-            </VCol>
-            <VCol cols="12" md="6">
-              <VSelect
                 v-model="form.is_active"
                 label="Status"
                 :items="statusOptions"
@@ -866,7 +862,7 @@ onMounted(() => {
           </VBtn>
           <VBtn
             color="primary"
-            :disabled="!form.student_number || !form.first_name || !form.last_name || !form.email || !form.gender || !form.year_level || !form.deparment_id"
+            :disabled="!form.student_number || !form.first_name || !form.last_name || !form.email || !form.gender || !form.deparment_id"
             @click="saveStudent"
           >
             {{ isEditing ? 'Update' : 'Create' }}
@@ -878,18 +874,57 @@ onMounted(() => {
     <!-- Delete Confirmation Dialog -->
     <VDialog
       v-model="isDeleteDialogOpen"
-      max-width="400"
+      max-width="500"
     >
       <VCard>
-        <VCardTitle class="pa-6">
+        <VCardTitle class="pa-6 d-flex align-center gap-2">
+          <VIcon icon="ri-error-warning-line" color="error" />
           Delete Student
         </VCardTitle>
 
         <VDivider />
 
         <VCardText class="pa-6">
-          Are you sure you want to delete <strong>{{ selectedStudent ? getFullName(selectedStudent) : '' }}</strong>?
-          This action cannot be undone.
+          <p class="mb-4">
+            Are you sure you want to delete <strong>{{ selectedStudent ? getFullName(selectedStudent) : '' }}</strong>?
+          </p>
+
+          <!-- Warning for user account -->
+          <VAlert
+            v-if="selectedStudent?.user_id"
+            type="warning"
+            variant="tonal"
+            class="mb-3"
+          >
+            <template #title>
+              User Account Will Be Deleted
+            </template>
+            This student has an associated user account. The account will be permanently deleted and they will no longer be able to log in.
+          </VAlert>
+
+          <!-- Warning for class enrollments -->
+          <VAlert
+            v-if="selectedStudent && getStudentClasses(selectedStudent).length > 0"
+            type="info"
+            variant="tonal"
+            class="mb-3"
+          >
+            <template #title>
+              Class Enrollments Will Be Removed
+            </template>
+            <div>
+              This student will be removed from the following classes:
+              <ul class="mt-2 ps-4">
+                <li v-for="className in getStudentClasses(selectedStudent)" :key="className">
+                  {{ className }}
+                </li>
+              </ul>
+            </div>
+          </VAlert>
+
+          <p class="text-error font-weight-medium mb-0">
+            This action cannot be undone.
+          </p>
         </VCardText>
 
         <VDivider />
@@ -906,7 +941,7 @@ onMounted(() => {
             color="error"
             @click="deleteStudent"
           >
-            Delete
+            Delete Student
           </VBtn>
         </VCardActions>
       </VCard>

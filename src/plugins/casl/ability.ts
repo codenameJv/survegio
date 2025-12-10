@@ -16,6 +16,17 @@ export type Subjects =
   | 'classes'
   | 'students'
   | 'teachers'
+  | 'surveys'
+  // Dean subjects
+  | 'DeanDashboard'
+  | 'DeanSurveys'
+  | 'DeanEvaluations'
+  | 'DeanTeachers'
+  | 'DeanStudents'
+  | 'DeanClasses'
+  // Student subjects
+  | 'StudentDashboard'
+  | 'StudentSurveys'
 
 export interface Rule { action: Actions; subject: Subjects }
 

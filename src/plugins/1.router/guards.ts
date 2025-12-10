@@ -1,6 +1,21 @@
 import type { RouteNamedMap, _RouterTyped } from 'unplugin-vue-router'
 import { canNavigate } from '@layouts/plugins/casl'
 
+// Helper to get the appropriate dashboard based on user role
+const getDashboardRoute = () => {
+  const userData = useCookie('userData').value as any
+  const roleName = userData?.role?.name?.toLowerCase() || ''
+
+  if (roleName === 'dean') {
+    return { name: 'dean-dashboard' }
+  }
+  else if (roleName === 'student') {
+    return { name: 'student-dashboard' }
+  }
+
+  return { name: 'dashboard' }
+}
+
 export const setupGuards = (router: _RouterTyped<RouteNamedMap & { [key: string]: any }>) => {
   // 👉 router.beforeEach
   // Docs: https://router.vuejs.org/guide/advanced/navigation-guards.html#global-before-guards
@@ -29,7 +44,8 @@ export const setupGuards = (router: _RouterTyped<RouteNamedMap & { [key: string]
     if (to.meta.unauthenticatedOnly) {
       if (isLoggedIn) {
         // Use replace to prevent back button from returning to login
-        router.replace({ name: 'dashboard' })
+        // Redirect to role-appropriate dashboard
+        router.replace(getDashboardRoute())
 
         return
       }

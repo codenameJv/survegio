@@ -68,6 +68,9 @@ importers:
       cookie-es:
         specifier: 1.2.1
         version: 1.2.1
+      destr:
+        specifier: ^2.0.5
+        version: 2.0.5
       eslint-plugin-regexp:
         specifier: 2.6.0
         version: 2.6.0(eslint@8.57.0)
@@ -80,6 +83,9 @@ importers:
       ofetch:
         specifier: 1.3.4
         version: 1.3.4
+      papaparse:
+        specifier: ^5.5.3
+        version: 5.5.3
       pinia:
         specifier: 2.1.7
         version: 2.1.7(typescript@5.5.4)(vue@3.4.34(typescript@5.5.4))
@@ -201,6 +207,9 @@ importers:
       '@types/node':
         specifier: 20.14.12
         version: 20.14.12
+      '@types/papaparse':
+        specifier: ^5.5.1
+        version: 5.5.1
       '@types/webfontloader':
         specifier: 1.6.38
         version: 1.6.38
@@ -1295,6 +1304,9 @@ packages:
 
   '@types/normalize-package-data@2.4.4':
     resolution: {integrity: sha512-37i+OaWTh9qeK4LSHPsyRC7NahnGotNuZvjLSgcPzblpHB3rrCJxAOgI5gCdKm7coonsaX1Of0ILiTcnZjbfxA==}
+
+  '@types/papaparse@5.5.1':
+    resolution: {integrity: sha512-esEO+VISsLIyE+JZBmb89NzsYYbpwV8lmv2rPo6oX5y9KhBaIP7hhHgjuTut54qjdKVMufTEcrh5fUl9+58huw==}
 
   '@types/semver@7.7.1':
     resolution: {integrity: sha512-FmgJfu+MOcQ370SD0ev7EI8TlCAfKYU+B4m5T3yXc1CiRN94g/SZPtsCkk506aUDtlMnFZvasDwHHUcZUEaYuA==}
@@ -3374,6 +3386,9 @@ packages:
   p-try@2.2.0:
     resolution: {integrity: sha512-R4nPAVTAU0B9D35/Gk3uJf/7XYbQcyohSKdvAxIRSNghFl4e71hVoGnBNQz9cWaXxO2I10KTC+3jMdvvoKw6dQ==}
     engines: {node: '>=6'}
+
+  papaparse@5.5.3:
+    resolution: {integrity: sha512-5QvjGxYVjxO59MGU2lHVYpRWBBtKHnlIAcSe1uNFCkkptUh63NFRj0FJQm7nR67puEruUci/ZkjmEFrjCAyP4A==}
 
   parent-module@1.0.1:
     resolution: {integrity: sha512-GQ2EWRpQV8/o+Aw8YqtfZZPfNRWZYkbidE9k5rpl/hC3vtHHBfGm2Ifi6qWV+coDGkrUKZAxE3Lot5kcsRlh+g==}
@@ -5609,6 +5624,10 @@ snapshots:
       undici-types: 6.21.0
 
   '@types/normalize-package-data@2.4.4': {}
+
+  '@types/papaparse@5.5.1':
+    dependencies:
+      '@types/node': 20.14.12
 
   '@types/semver@7.7.1': {}
 
@@ -8148,6 +8167,8 @@ snapshots:
       p-limit: 3.1.0
 
   p-try@2.2.0: {}
+
+  papaparse@5.5.3: {}
 
   parent-module@1.0.1:
     dependencies:
