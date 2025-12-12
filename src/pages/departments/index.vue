@@ -48,6 +48,9 @@ const form = ref({
 
 const search = ref('')
 
+// Router
+const router = useRouter()
+
 // Table headers
 const headers = [
   { title: 'Department Name', key: 'name', sortable: true },
@@ -222,10 +225,27 @@ const openEditDialog = (department: Department) => {
     ? department.name.id
     : department.name
 
-  // Extract teacher_ids as numbers
-  const teacherIds = department.teacher_id
-    ? (department.teacher_id as any[]).map(t => typeof t === 'object' ? t.id : t)
-    : []
+  // Extract teacher_ids as numbers - handle junction table structure
+  const teacherIds: number[] = []
+  if (department.teacher_id && Array.isArray(department.teacher_id)) {
+    for (const item of department.teacher_id) {
+      if (typeof item === 'number') {
+        teacherIds.push(item)
+      }
+      else if (typeof item === 'object' && item !== null) {
+        // Junction table structure: { id, Teachers_id } or direct teacher { id, first_name, ... }
+        if (item.Teachers_id) {
+          // Junction table - get the actual teacher ID
+          const tid = typeof item.Teachers_id === 'object' ? item.Teachers_id.id : item.Teachers_id
+          if (tid) teacherIds.push(tid)
+        }
+        else if (item.first_name) {
+          // Direct teacher object
+          teacherIds.push(item.id)
+        }
+      }
+    }
+  }
 
   form.value = {
     id: department.id,
@@ -297,6 +317,12 @@ const deleteDepartment = async () => {
   }
 }
 
+// Navigate to department detail page
+const viewDepartmentDetails = (department: Department) => {
+  if (department.id)
+    router.push(`/departments/${department.id}`)
+}
+
 // Fetch data on mount
 onMounted(() => {
   fetchDepartments()
@@ -309,7 +335,7 @@ onMounted(() => {
   <div>
     <VCard>
       <VCardTitle class="d-flex align-center pa-6">
-        <span class="text-h5">Departments</span>
+        <span class="text-h5">Department Management</span>
         <VSpacer />
         <VTextField
           v-model="search"
@@ -338,9 +364,11 @@ onMounted(() => {
         :search="search"
         :loading="isLoading"
         hover
+        class="clickable-rows"
+        @click:row="(_event: Event, { item }: { item: Department }) => viewDepartmentDetails(item)"
       >
         <template #item.name="{ item }">
-          <span class="font-weight-medium">{{ getDepartmentName(item) }}</span>
+          <span class="font-weight-medium text-primary">{{ getDepartmentName(item) }}</span>
         </template>
 
         <template #item.dean="{ item }">
@@ -358,14 +386,14 @@ onMounted(() => {
           <div class="d-flex justify-center gap-1">
             <IconBtn
               size="small"
-              @click="openEditDialog(item)"
+              @click.stop="openEditDialog(item)"
             >
               <VIcon icon="ri-pencil-line" />
             </IconBtn>
             <IconBtn
               size="small"
               color="error"
-              @click="openDeleteDialog(item)"
+              @click.stop="openDeleteDialog(item)"
             >
               <VIcon icon="ri-delete-bin-line" />
             </IconBtn>
@@ -517,3 +545,14 @@ onMounted(() => {
     </VDialog>
   </div>
 </template>
+
+<style scoped>
+.clickable-rows :deep(tbody tr) {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.clickable-rows :deep(tbody tr:hover) {
+  background-color: rgba(var(--v-theme-primary), 0.04) !important;
+}
+</style>

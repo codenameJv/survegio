@@ -133,7 +133,7 @@ onMounted(() => {
   <div>
     <VCard>
       <VCardTitle class="d-flex align-center pa-6">
-        <span class="text-h5">Programs</span>
+        <span class="text-h5">Program Management</span>
         <VSpacer />
         <VTextField
           v-model="search"

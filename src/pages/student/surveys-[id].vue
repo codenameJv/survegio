@@ -19,16 +19,16 @@ interface StudentQuestionGroup {
   number: number
   title: string
   response_style: string
-  question_id?: StudentQuestion[]
+  questions?: StudentQuestion[]
 }
 
 interface StudentSurvey {
   id: number
   title: string
-  description: string
   instruction?: string
   is_active: string
-  answer_id?: StudentQuestionGroup[]
+  evaluation_type?: 'Class' | 'Office'
+  question_group?: StudentQuestionGroup[]
 }
 
 interface Teacher {
@@ -44,6 +44,12 @@ interface ClassInfo {
   teacher_id?: Teacher | null
 }
 
+interface SchoolOffice {
+  id: number
+  name: string
+  description?: string
+}
+
 const route = useRoute()
 const router = useRouter()
 
@@ -53,11 +59,18 @@ const classId = computed(() => {
   return id ? Number(id) : null
 })
 
+const officeId = computed(() => {
+  const id = route.query.office
+  return id ? Number(id) : null
+})
+
 const isLoading = ref(true)
 const isSubmitting = ref(false)
 const survey = ref<StudentSurvey | null>(null)
 const classInfo = ref<ClassInfo | null>(null)
+const officeInfo = ref<SchoolOffice | null>(null)
 const answers = ref<Record<number, string>>({})
+const comment = ref('')
 
 const snackbar = ref({
   show: false,
@@ -65,12 +78,19 @@ const snackbar = ref({
   color: 'success',
 })
 
+// Determine if this is an office-based evaluation (from survey data)
+const isOfficeBased = computed(() => {
+  const evalType = survey.value?.evaluation_type
+  if (!evalType) return !!officeId.value // Fallback to query param
+  return evalType.toLowerCase() === 'office'
+})
+
 // Get all questions as flat array with response style
 const allQuestions = computed(() => {
-  if (!survey.value?.answer_id) return []
+  if (!survey.value?.question_group) return []
   const questions: { question: StudentQuestion; groupTitle: string; responseStyle: string }[] = []
-  for (const group of survey.value.answer_id) {
-    for (const q of group.question_id || []) {
+  for (const group of survey.value.question_group) {
+    for (const q of group.questions || []) {
       questions.push({
         question: q,
         groupTitle: group.title,
@@ -88,25 +108,31 @@ const isResponseStyle = (responseStyle: string, type: string): boolean => {
   return lower.includes(type.toLowerCase())
 }
 
-// Get answer options based on response style
+// Get answer options based on response style and evaluation type
 const getAnswerOptions = (responseStyle: string) => {
+  // Office-based rating labels
+  const officeRatingOptions = [
+    { value: '5', label: '5 - Outstanding' },
+    { value: '4', label: '4 - Very Satisfactory' },
+    { value: '3', label: '3 - Satisfactory' },
+    { value: '2', label: '2 - Unsatisfactory' },
+    { value: '1', label: '1 - Poor' },
+  ]
+
+  // Class-based rating labels (default)
+  const classRatingOptions = [
+    { value: '5', label: '5 - Always manifested' },
+    { value: '4', label: '4 - Often manifested' },
+    { value: '3', label: '3 - Sometimes manifested' },
+    { value: '2', label: '2 - Seldom manifested' },
+    { value: '1', label: '1 - Never/Rarely manifested' },
+  ]
+
   switch (responseStyle) {
     case 'Likert-Scale Questions':
-      return [
-        { value: '5', label: 'Strongly Agree' },
-        { value: '4', label: 'Agree' },
-        { value: '3', label: 'Neutral' },
-        { value: '2', label: 'Disagree' },
-        { value: '1', label: 'Strongly Disagree' },
-      ]
+      return isOfficeBased.value ? officeRatingOptions : classRatingOptions
     case 'Rating-Scale Questions':
-      return [
-        { value: '5', label: 'Excellent (5)' },
-        { value: '4', label: 'Very Good (4)' },
-        { value: '3', label: 'Good (3)' },
-        { value: '2', label: 'Fair (2)' },
-        { value: '1', label: 'Poor (1)' },
-      ]
+      return isOfficeBased.value ? officeRatingOptions : classRatingOptions
     case 'Yes or No':
       return [
         { value: 'Yes', label: 'Yes' },
@@ -137,17 +163,38 @@ const fetchClassInfo = async () => {
   }
 }
 
+// Fetch office info
+const fetchOfficeInfo = async () => {
+  if (!officeId.value) {
+    officeInfo.value = null
+    return
+  }
+  try {
+    const res = await $api(`/items/SchoolOffices/${officeId.value}`, {
+      params: {
+        fields: ['id', 'name', 'description'],
+      },
+    })
+    officeInfo.value = res.data
+  }
+  catch (error) {
+    console.error('Failed to fetch office info:', error)
+    officeInfo.value = null
+  }
+}
+
 // Fetch survey
 const fetchSurvey = async () => {
   isLoading.value = true
   try {
     const [surveyRes] = await Promise.all([
-      $api(`/items/StudentSatisfactionSurvey/${surveyId.value}`, {
+      $api(`/items/StudentEvaluationSurvey/${surveyId.value}`, {
         params: {
-          fields: ['*', 'answer_id.*', 'answer_id.question_id.*'],
+          fields: ['id', 'title', 'instruction', 'is_active', 'evaluation_type', 'question_group.*', 'question_group.questions.*'],
         },
       }),
       fetchClassInfo(),
+      fetchOfficeInfo(),
     ])
     survey.value = surveyRes.data
   }
@@ -186,17 +233,26 @@ const submitResponse = async () => {
       submitted_at: new Date().toISOString(),
     }
 
-    // Include class_id if evaluating a specific class
-    if (classId.value) {
+    // For office-based evaluations, include office_id
+    if (officeId.value) {
+      responseBody.office_id = officeId.value
+    }
+    // For class-based evaluations, include class_id and teacher
+    else if (classId.value) {
       responseBody.class_id = classId.value
+
+      // Include evaluated teacher if available from class
+      if (classInfo.value?.teacher_id && typeof classInfo.value.teacher_id === 'object') {
+        responseBody.evaluated_teached_id = classInfo.value.teacher_id.id
+      }
     }
 
-    // Include evaluated teacher if available from class
-    if (classInfo.value?.teacher_id && typeof classInfo.value.teacher_id === 'object') {
-      responseBody.evaluated_teacher_id = classInfo.value.teacher_id.id
+    // Include comment if provided
+    if (comment.value.trim()) {
+      responseBody.comment = comment.value.trim()
     }
 
-    const responseRes = await $api('/items/StudentSurveyResponse', {
+    const responseRes = await $api('/items/StudentSurveyResponses', {
       method: 'POST',
       body: responseBody,
     })
@@ -210,7 +266,7 @@ const submitResponse = async () => {
       answer_value: answerValue,
     }))
 
-    await $api('/items/StudentSurveyAnswer', {
+    await $api('/items/StudentSurveyAnswers', {
       method: 'POST',
       body: answersData,
     })
@@ -227,7 +283,7 @@ const submitResponse = async () => {
     console.error('Error details:', error?.data)
     let errorMessage = 'Failed to submit evaluation.'
     if (error?.data?.errors?.[0]?.extensions?.code === 'FORBIDDEN') {
-      errorMessage = 'Permission denied. Please contact administrator to enable Create permission on StudentSurveyResponse and StudentSurveyAnswer.'
+      errorMessage = 'Permission denied. Please contact administrator to enable Create permission on StudentSurveyResponses and StudentSurveyAnswers.'
     }
     else if (error?.data?.errors?.[0]?.message) {
       errorMessage = error.data.errors[0].message
@@ -253,7 +309,11 @@ const getTeacherName = (): string => {
 const getClassName = (): string => {
   if (!classInfo.value) return '-'
   const courseCode = classInfo.value.course_id?.courseCode || ''
-  return `${courseCode} - ${classInfo.value.section}`
+  const courseName = classInfo.value.course_id?.courseName || ''
+  if (courseCode && courseName) {
+    return `${courseCode} - ${courseName}`
+  }
+  return courseCode || courseName || '-'
 }
 
 onMounted(() => {
@@ -284,102 +344,151 @@ onMounted(() => {
         <VDivider />
 
         <VCardText>
-          <!-- Class and Teacher being evaluated -->
+          <!-- Office being evaluated -->
           <VAlert
-            v-if="classInfo"
+            v-if="officeInfo"
             type="info"
             variant="tonal"
             class="mb-4"
           >
-            <template #title>Evaluating Class Instructor</template>
             <div class="d-flex flex-column gap-1">
-              <div>
-                <strong>Class:</strong> {{ getClassName() }}
+              <div class="font-weight-medium">
+                {{ officeInfo.name }}
               </div>
-              <div>
-                <strong>Instructor:</strong> {{ getTeacherName() }}
+              <div v-if="officeInfo.description" class="text-body-2">
+                {{ officeInfo.description }}
               </div>
             </div>
           </VAlert>
 
-          <p v-if="survey.description" class="text-body-1 mb-4">{{ survey.description }}</p>
+          <!-- Class and Teacher being evaluated -->
+          <VAlert
+            v-else-if="classInfo"
+            type="info"
+            variant="tonal"
+            class="mb-4"
+          >
+            <div class="d-flex flex-column gap-1">
+              <div>
+                {{ getClassName() }}
+              </div>
+              <div>
+                {{ getTeacherName() }}
+              </div>
+            </div>
+          </VAlert>
+
           <p v-if="survey.instruction" class="text-body-2 text-medium-emphasis mb-6">
             <strong>Instructions:</strong> {{ survey.instruction }}
           </p>
 
           <!-- Questions -->
-          <div v-for="(q, index) in allQuestions" :key="q.question.id" class="mb-6">
-            <p class="font-weight-medium mb-2">{{ index + 1 }}. {{ q.question.question }}</p>
+          <VCard
+            v-for="(q, index) in allQuestions"
+            :key="q.question.id"
+            variant="outlined"
+            class="mb-4"
+          >
+            <VCardText>
+              <p class="font-weight-medium text-body-1 mb-4">{{ index + 1 }}. {{ q.question.question }}</p>
 
-            <!-- Likert Scale - Radio buttons -->
-            <VRadioGroup
-              v-if="isResponseStyle(q.responseStyle, 'likert')"
-              v-model="answers[q.question.id]"
-              inline
-            >
-              <VRadio
-                v-for="option in getAnswerOptions('Likert-Scale Questions')"
-                :key="option.value"
-                :label="option.label"
-                :value="option.value"
+              <!-- Likert Scale - Radio buttons -->
+              <VRadioGroup
+                v-if="isResponseStyle(q.responseStyle, 'likert')"
+                v-model="answers[q.question.id]"
+                class="ms-2"
+              >
+                <VRadio
+                  v-for="option in getAnswerOptions('Likert-Scale Questions')"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                  density="comfortable"
+                  class="mb-1"
+                />
+              </VRadioGroup>
+
+              <!-- Rating Scale - Radio buttons -->
+              <VRadioGroup
+                v-else-if="isResponseStyle(q.responseStyle, 'rating')"
+                v-model="answers[q.question.id]"
+                class="ms-2"
+              >
+                <VRadio
+                  v-for="option in getAnswerOptions('Rating-Scale Questions')"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                  density="comfortable"
+                  class="mb-1"
+                />
+              </VRadioGroup>
+
+              <!-- Yes/No - Radio buttons -->
+              <VRadioGroup
+                v-else-if="isResponseStyle(q.responseStyle, 'yes') || isResponseStyle(q.responseStyle, 'no')"
+                v-model="answers[q.question.id]"
+                inline
+              >
+                <VRadio
+                  v-for="option in getAnswerOptions('Yes or No')"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </VRadioGroup>
+
+              <!-- Multiple Choice - Text field for now -->
+              <VTextField
+                v-else-if="isResponseStyle(q.responseStyle, 'multiple')"
+                v-model="answers[q.question.id]"
+                label="Your Answer"
+                variant="outlined"
+                density="compact"
               />
-            </VRadioGroup>
 
-            <!-- Rating Scale - Radio buttons -->
-            <VRadioGroup
-              v-else-if="isResponseStyle(q.responseStyle, 'rating')"
-              v-model="answers[q.question.id]"
-              inline
-            >
-              <VRadio
-                v-for="option in getAnswerOptions('Rating-Scale Questions')"
-                :key="option.value"
-                :label="option.label"
-                :value="option.value"
+              <!-- Open-Ended - Textarea -->
+              <VTextarea
+                v-else-if="isResponseStyle(q.responseStyle, 'open')"
+                v-model="answers[q.question.id]"
+                label="Your Answer"
+                variant="outlined"
+                rows="3"
               />
-            </VRadioGroup>
 
-            <!-- Yes/No - Radio buttons -->
-            <VRadioGroup
-              v-else-if="isResponseStyle(q.responseStyle, 'yes') || isResponseStyle(q.responseStyle, 'no')"
-              v-model="answers[q.question.id]"
-              inline
-            >
-              <VRadio
-                v-for="option in getAnswerOptions('Yes or No')"
-                :key="option.value"
-                :label="option.label"
-                :value="option.value"
+              <!-- Default fallback - Radio 1-5 -->
+              <VRadioGroup v-else v-model="answers[q.question.id]" class="ms-2">
+                <template v-if="isOfficeBased">
+                  <VRadio label="5 - Outstanding" value="5" density="comfortable" class="mb-1" />
+                  <VRadio label="4 - Very Satisfactory" value="4" density="comfortable" class="mb-1" />
+                  <VRadio label="3 - Satisfactory" value="3" density="comfortable" class="mb-1" />
+                  <VRadio label="2 - Unsatisfactory" value="2" density="comfortable" class="mb-1" />
+                  <VRadio label="1 - Poor" value="1" density="comfortable" class="mb-1" />
+                </template>
+                <template v-else>
+                  <VRadio label="5 - Always manifested" value="5" density="comfortable" class="mb-1" />
+                  <VRadio label="4 - Often manifested" value="4" density="comfortable" class="mb-1" />
+                  <VRadio label="3 - Sometimes manifested" value="3" density="comfortable" class="mb-1" />
+                  <VRadio label="2 - Seldom manifested" value="2" density="comfortable" class="mb-1" />
+                  <VRadio label="1 - Never/Rarely manifested" value="1" density="comfortable" class="mb-1" />
+                </template>
+              </VRadioGroup>
+            </VCardText>
+          </VCard>
+          <!-- Comment Section -->
+          <VCard variant="outlined" class="mb-4">
+            <VCardText>
+              <p class="font-weight-medium text-body-1 mb-4">Comments/Suggestions</p>
+              <VTextarea
+                v-model="comment"
+                :placeholder="officeInfo ? 'Share any additional feedback or comments about this office...' : 'Share any additional feedback or comments about this class...'"
+                variant="outlined"
+                rows="4"
+                counter
+                maxlength="1000"
               />
-            </VRadioGroup>
-
-            <!-- Multiple Choice - Text field for now -->
-            <VTextField
-              v-else-if="isResponseStyle(q.responseStyle, 'multiple')"
-              v-model="answers[q.question.id]"
-              label="Your Answer"
-              variant="outlined"
-              density="compact"
-            />
-
-            <!-- Open-Ended - Textarea -->
-            <VTextarea
-              v-else-if="isResponseStyle(q.responseStyle, 'open')"
-              v-model="answers[q.question.id]"
-              label="Your Answer"
-              variant="outlined"
-              rows="3"
-            />
-
-            <!-- Default fallback - Radio 1-5 -->
-            <VRadioGroup v-else v-model="answers[q.question.id]" inline>
-              <VRadio label="1" value="1" />
-              <VRadio label="2" value="2" />
-              <VRadio label="3" value="3" />
-              <VRadio label="4" value="4" />
-              <VRadio label="5" value="5" />
-            </VRadioGroup>
-          </div>
+            </VCardText>
+          </VCard>
         </VCardText>
 
         <VDivider />

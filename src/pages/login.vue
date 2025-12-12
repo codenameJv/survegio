@@ -36,6 +36,14 @@ const rememberMe = ref(!!savedEmail)
 
 const isLoading = ref(false)
 
+// Check if redirected due to session expiration
+const sessionExpired = computed(() => route.query.sessionExpired === 'true')
+
+// Dismiss the session expired alert
+const dismissSessionAlert = () => {
+  router.replace({ query: { ...route.query, sessionExpired: undefined } })
+}
+
 const login = async () => {
   isLoading.value = true
   errors.value = { email: undefined, password: undefined }
@@ -381,6 +389,21 @@ const onSubmit = () => {
               <span class="text-caption text-medium-emphasis">Performance Evaluation</span>
             </div>
           </div>
+
+          <!-- Session Expired Alert -->
+          <VAlert
+            v-if="sessionExpired"
+            type="warning"
+            variant="tonal"
+            closable
+            class="mb-4"
+            @click:close="dismissSessionAlert"
+          >
+            <template #title>
+              Session Expired
+            </template>
+            Your session has expired. Please log in again to continue.
+          </VAlert>
 
           <VCardText class="pa-0">
             <h4 class="text-h4 mb-1 text-primary">

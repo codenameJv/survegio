@@ -25,9 +25,8 @@ interface DeanQuestionGroup {
 interface DeanSurvey {
   id: number
   title: string
-  description: string
   instruction?: string
-  survey_type: string
+  evaluation_type?: 'class' | 'office'
   question_groups?: DeanQuestionGroup[]
 }
 
@@ -82,25 +81,33 @@ const isResponseStyle = (responseStyle: string, type: string): boolean => {
   return lower.includes(type.toLowerCase())
 }
 
-// Get answer options based on response style
+// Get answer options based on response style and evaluation type
 const getAnswerOptions = (responseStyle: string) => {
+  const isOfficeBased = survey.value?.evaluation_type === 'office'
+
+  // Office-based rating labels
+  const officeRatingOptions = [
+    { value: '5', label: '5 - Outstanding' },
+    { value: '4', label: '4 - Very Satisfactory' },
+    { value: '3', label: '3 - Satisfactory' },
+    { value: '2', label: '2 - Unsatisfactory' },
+    { value: '1', label: '1 - Poor' },
+  ]
+
+  // Class-based rating labels (default)
+  const classRatingOptions = [
+    { value: '5', label: '5 - Always manifested' },
+    { value: '4', label: '4 - Often manifested' },
+    { value: '3', label: '3 - Sometimes manifested' },
+    { value: '2', label: '2 - Seldom manifested' },
+    { value: '1', label: '1 - Never/Rarely manifested' },
+  ]
+
   switch (responseStyle) {
     case 'Likert-Scale Questions':
-      return [
-        { value: '5', label: 'Strongly Agree' },
-        { value: '4', label: 'Agree' },
-        { value: '3', label: 'Neutral' },
-        { value: '2', label: 'Disagree' },
-        { value: '1', label: 'Strongly Disagree' },
-      ]
+      return isOfficeBased ? officeRatingOptions : classRatingOptions
     case 'Rating-Scale Questions':
-      return [
-        { value: '5', label: 'Excellent (5)' },
-        { value: '4', label: 'Very Good (4)' },
-        { value: '3', label: 'Good (3)' },
-        { value: '2', label: 'Fair (2)' },
-        { value: '1', label: 'Poor (1)' },
-      ]
+      return isOfficeBased ? officeRatingOptions : classRatingOptions
     case 'Yes or No':
       return [
         { value: 'Yes', label: 'Yes' },
@@ -182,7 +189,7 @@ const submitResponse = async () => {
 
     // Include evaluated teacher if this is a faculty evaluation
     if (teacherId.value) {
-      responseBody.evaluated_teacher_id = teacherId.value
+      responseBody.evaluated_teached_id = teacherId.value
     }
 
     const responseRes = await $api('/items/DeanSurveyResponses', {
@@ -271,84 +278,103 @@ onMounted(() => {
             <strong>{{ teacher.first_name }} {{ teacher.last_name }}</strong>
           </VAlert>
 
-          <p v-if="survey.description" class="text-body-1 mb-4">{{ survey.description }}</p>
           <p v-if="survey.instruction" class="text-body-2 text-medium-emphasis mb-6">
             <strong>Instructions:</strong> {{ survey.instruction }}
           </p>
 
           <!-- Questions -->
-          <div v-for="(q, index) in allQuestions" :key="q.question.id" class="mb-6">
-            <p class="font-weight-medium mb-2">{{ index + 1 }}. {{ q.question.question }}</p>
+          <VCard
+            v-for="(q, index) in allQuestions"
+            :key="q.question.id"
+            variant="outlined"
+            class="mb-4"
+          >
+            <VCardText>
+              <p class="font-weight-medium text-body-1 mb-4">{{ index + 1 }}. {{ q.question.question }}</p>
 
-            <!-- Likert Scale - Radio buttons -->
-            <VRadioGroup
-              v-if="isResponseStyle(q.responseStyle, 'likert')"
-              v-model="answers[q.question.id]"
-              inline
-            >
-              <VRadio
-                v-for="option in getAnswerOptions('Likert-Scale Questions')"
-                :key="option.value"
-                :label="option.label"
-                :value="option.value"
+              <!-- Likert Scale - Radio buttons -->
+              <VRadioGroup
+                v-if="isResponseStyle(q.responseStyle, 'likert')"
+                v-model="answers[q.question.id]"
+                class="ms-2"
+              >
+                <VRadio
+                  v-for="option in getAnswerOptions('Likert-Scale Questions')"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                  density="comfortable"
+                  class="mb-1"
+                />
+              </VRadioGroup>
+
+              <!-- Rating Scale - Radio buttons -->
+              <VRadioGroup
+                v-else-if="isResponseStyle(q.responseStyle, 'rating')"
+                v-model="answers[q.question.id]"
+                class="ms-2"
+              >
+                <VRadio
+                  v-for="option in getAnswerOptions('Rating-Scale Questions')"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                  density="comfortable"
+                  class="mb-1"
+                />
+              </VRadioGroup>
+
+              <!-- Yes/No - Radio buttons -->
+              <VRadioGroup
+                v-else-if="isResponseStyle(q.responseStyle, 'yes') || isResponseStyle(q.responseStyle, 'no')"
+                v-model="answers[q.question.id]"
+                inline
+              >
+                <VRadio
+                  v-for="option in getAnswerOptions('Yes or No')"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </VRadioGroup>
+
+              <!-- Multiple Choice - Text field for now -->
+              <VTextField
+                v-else-if="isResponseStyle(q.responseStyle, 'multiple')"
+                v-model="answers[q.question.id]"
+                label="Your Answer"
+                variant="outlined"
+                density="compact"
               />
-            </VRadioGroup>
 
-            <!-- Rating Scale - Radio buttons -->
-            <VRadioGroup
-              v-else-if="isResponseStyle(q.responseStyle, 'rating')"
-              v-model="answers[q.question.id]"
-              inline
-            >
-              <VRadio
-                v-for="option in getAnswerOptions('Rating-Scale Questions')"
-                :key="option.value"
-                :label="option.label"
-                :value="option.value"
+              <!-- Open-Ended - Textarea -->
+              <VTextarea
+                v-else-if="isResponseStyle(q.responseStyle, 'open')"
+                v-model="answers[q.question.id]"
+                label="Your Answer"
+                variant="outlined"
+                rows="3"
               />
-            </VRadioGroup>
 
-            <!-- Yes/No - Radio buttons -->
-            <VRadioGroup
-              v-else-if="isResponseStyle(q.responseStyle, 'yes') || isResponseStyle(q.responseStyle, 'no')"
-              v-model="answers[q.question.id]"
-              inline
-            >
-              <VRadio
-                v-for="option in getAnswerOptions('Yes or No')"
-                :key="option.value"
-                :label="option.label"
-                :value="option.value"
-              />
-            </VRadioGroup>
-
-            <!-- Multiple Choice - Text field for now -->
-            <VTextField
-              v-else-if="isResponseStyle(q.responseStyle, 'multiple')"
-              v-model="answers[q.question.id]"
-              label="Your Answer"
-              variant="outlined"
-              density="compact"
-            />
-
-            <!-- Open-Ended - Textarea -->
-            <VTextarea
-              v-else-if="isResponseStyle(q.responseStyle, 'open')"
-              v-model="answers[q.question.id]"
-              label="Your Answer"
-              variant="outlined"
-              rows="3"
-            />
-
-            <!-- Default fallback - Radio 1-5 -->
-            <VRadioGroup v-else v-model="answers[q.question.id]" inline>
-              <VRadio label="1" value="1" />
-              <VRadio label="2" value="2" />
-              <VRadio label="3" value="3" />
-              <VRadio label="4" value="4" />
-              <VRadio label="5" value="5" />
-            </VRadioGroup>
-          </div>
+              <!-- Default fallback - Radio 1-5 -->
+              <VRadioGroup v-else v-model="answers[q.question.id]" class="ms-2">
+                <template v-if="survey?.evaluation_type === 'office'">
+                  <VRadio label="5 - Outstanding" value="5" density="comfortable" class="mb-1" />
+                  <VRadio label="4 - Very Satisfactory" value="4" density="comfortable" class="mb-1" />
+                  <VRadio label="3 - Satisfactory" value="3" density="comfortable" class="mb-1" />
+                  <VRadio label="2 - Unsatisfactory" value="2" density="comfortable" class="mb-1" />
+                  <VRadio label="1 - Poor" value="1" density="comfortable" class="mb-1" />
+                </template>
+                <template v-else>
+                  <VRadio label="5 - Always manifested" value="5" density="comfortable" class="mb-1" />
+                  <VRadio label="4 - Often manifested" value="4" density="comfortable" class="mb-1" />
+                  <VRadio label="3 - Sometimes manifested" value="3" density="comfortable" class="mb-1" />
+                  <VRadio label="2 - Seldom manifested" value="2" density="comfortable" class="mb-1" />
+                  <VRadio label="1 - Never/Rarely manifested" value="1" density="comfortable" class="mb-1" />
+                </template>
+              </VRadioGroup>
+            </VCardText>
+          </VCard>
         </VCardText>
 
         <VDivider />

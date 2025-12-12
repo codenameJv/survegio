@@ -154,7 +154,7 @@ const fetchResponseTrends = async () => {
     const filterDate = sevenDaysAgo.toISOString()
 
     // Fetch student responses from last 7 days
-    const studentRes = await $api('/items/StudentSurveyResponse', {
+    const studentRes = await $api('/items/StudentSurveyResponses', {
       params: {
         filter: { submitted_at: { _gte: filterDate } },
         fields: ['submitted_at'],
@@ -174,7 +174,7 @@ const fetchResponseTrends = async () => {
 
     // Fetch dean responses from last 7 days
     try {
-      const deanRes = await $api('/items/DeanSurveyResponse', {
+      const deanRes = await $api('/items/DeanSurveyResponses', {
         params: {
           filter: { submitted_at: { _gte: filterDate } },
           fields: ['submitted_at'],
@@ -242,12 +242,12 @@ const fetchStats = async () => {
     stats.value.totalDepartments = departmentsRes.data?.[0]?.count ?? 0
 
     // Student Surveys
-    const studentSurveysRes = await $api('/items/StudentSatisfactionSurvey', {
+    const studentSurveysRes = await $api('/items/StudentEvaluationSurvey', {
       params: { aggregate: { count: '*' } },
     })
     const studentSurveyCount = studentSurveysRes.data?.[0]?.count ?? 0
 
-    const activeStudentSurveysRes = await $api('/items/StudentSatisfactionSurvey', {
+    const activeStudentSurveysRes = await $api('/items/StudentEvaluationSurvey', {
       params: {
         filter: { is_active: { _eq: 'Active' } },
         aggregate: { count: '*' },
@@ -255,7 +255,7 @@ const fetchStats = async () => {
     })
     const activeStudentCount = activeStudentSurveysRes.data?.[0]?.count ?? 0
 
-    const studentResponsesRes = await $api('/items/StudentSurveyResponse', {
+    const studentResponsesRes = await $api('/items/StudentSurveyResponses', {
       params: { aggregate: { count: '*' } },
     })
     const studentResponseCount = studentResponsesRes.data?.[0]?.count ?? 0
@@ -279,7 +279,7 @@ const fetchStats = async () => {
       })
       activeDeanCount = activeDeanSurveysRes.data?.[0]?.count ?? 0
 
-      const deanResponsesRes = await $api('/items/DeanSurveyResponse', {
+      const deanResponsesRes = await $api('/items/DeanSurveyResponses', {
         params: { aggregate: { count: '*' } },
       })
       deanResponseCount = deanResponsesRes.data?.[0]?.count ?? 0

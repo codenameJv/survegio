@@ -5,6 +5,50 @@ const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8061'
 let isRefreshing = false
 let refreshPromise: Promise<string | null> | null = null
 
+// Decode JWT token to get payload (without verification)
+function decodeJWT(token: string): { exp?: number; iat?: number } | null {
+  try {
+    const parts = token.split('.')
+    if (parts.length !== 3) return null
+    const payload = parts[1]
+    const decoded = atob(payload.replace(/-/g, '+').replace(/_/g, '/'))
+    return JSON.parse(decoded)
+  }
+  catch {
+    return null
+  }
+}
+
+// Check if token is expired (with 30 second buffer)
+function isTokenExpired(token: string): boolean {
+  const payload = decodeJWT(token)
+  if (!payload || !payload.exp) return true
+
+  // Add 30 second buffer to account for clock skew
+  const expirationTime = payload.exp * 1000
+  const currentTime = Date.now()
+  const bufferTime = 30 * 1000 // 30 seconds
+
+  return currentTime >= (expirationTime - bufferTime)
+}
+
+// Clear all auth data and redirect to login
+export function clearAuthAndRedirect(reason: 'expired' | 'unauthorized' | 'logout' = 'expired') {
+  useCookie('accessToken').value = null
+  useCookie('refreshToken').value = null
+  useCookie('userData').value = null
+  useCookie('userAbilityRules').value = null
+  useCookie('rememberMe').value = null
+
+  // Redirect to login with reason
+  if (typeof window !== 'undefined') {
+    const currentPath = window.location.pathname
+    if (currentPath !== '/login') {
+      window.location.href = `/login?${reason === 'expired' ? 'sessionExpired=true' : 'reason=' + reason}`
+    }
+  }
+}
+
 // Function to refresh the access token
 async function refreshAccessToken(): Promise<string | null> {
   const refreshToken = useCookie('refreshToken').value
@@ -67,8 +111,30 @@ async function handleTokenRefresh(): Promise<string | null> {
 
 export const $api = ofetch.create({
   baseURL,
-  async onRequest({ options }) {
-    const accessToken = useCookie('accessToken').value
+  async onRequest({ request, options }) {
+    const url = typeof request === 'string' ? request : request.toString()
+
+    // Skip token handling for auth endpoints
+    if (url.includes('/auth/')) {
+      return
+    }
+
+    let accessToken = useCookie('accessToken').value
+
+    // Check if token exists and is expired
+    if (accessToken && isTokenExpired(accessToken)) {
+      // Try to refresh the token proactively
+      const newToken = await handleTokenRefresh()
+      if (newToken) {
+        accessToken = newToken
+      }
+      else {
+        // Refresh failed, redirect to login
+        clearAuthAndRedirect('expired')
+        throw new Error('Session expired')
+      }
+    }
+
     if (accessToken) {
       options.headers = {
         ...options.headers,
@@ -100,7 +166,7 @@ export const $api = ofetch.create({
       }
       else {
         // Refresh failed, redirect to login
-        window.location.href = '/login'
+        clearAuthAndRedirect('expired')
       }
     }
 

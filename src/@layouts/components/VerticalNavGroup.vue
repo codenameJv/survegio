@@ -103,34 +103,10 @@ watch(isGroupOpen, (val: boolean) => {
 /*
   Watch for openGroups
 
-  It will help in making vertical nav adapting the behavior of accordion.
-  If we open multiple groups without navigating to any route we must close the inactive or temporarily opened groups.
-
-  😵‍💫 Gotchas:
-    * If we open inactive group then it will auto close that group because we close groups based on active state.
-      Goal of this watcher is auto close groups which are not active when openGroups array is updated.
-      So, we have to find a way to do not close recently opened inactive group.
-      For this we will fetch recently added group in openGroups array and won't perform closing operation if recently added group is current group
+  NOTE: Accordion behavior disabled to allow multiple groups to be open simultaneously.
+  The original code auto-closed inactive groups when another group was opened.
 */
-watch(openGroups, val => {
-  // Prevent closing recently opened inactive group.
-  const lastOpenedGroup = val.at(-1)
-  if (lastOpenedGroup === props.item.title)
-    return
-
-  const isActive = isNavGroupActive(props.item.children, router)
-
-  // Goal of this watcher is to close inactive groups. So don't do anything for active groups.
-  if (isActive)
-    return
-
-  // We won't close group if any of child group is open in current group
-  if (isAnyChildOpen(props.item.children))
-    return
-
-  isGroupOpen.value = isActive
-  isGroupActive.value = isActive
-}, { deep: true })
+// Accordion behavior removed - multiple nav groups can now be expanded at the same time
 
 // ℹ️ Previously instead of below watcher we were using two individual watcher for `isVerticalNavHovered`, `isVerticalNavCollapsed` & `isLessThanOverlayNavBreakpoint`
 watch(

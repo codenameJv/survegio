@@ -36,7 +36,6 @@ interface DeanSurvey {
   id?: number
   title: string
   instruction: string
-  survey_type: 'faculty_evaluation' | 'program_assessment'
   survey_start: string
   survey_end: string
   is_active: 'Active' | 'Draft' | 'Archived'
@@ -50,7 +49,6 @@ interface DeanSurveyForm {
   id?: number
   title: string
   instruction: string
-  survey_type: 'faculty_evaluation' | 'program_assessment'
   survey_start: string
   survey_end: string
   is_active: 'Active' | 'Draft' | 'Archived'
@@ -68,12 +66,14 @@ const isSaving = ref(false)
 const selectedSurvey = ref<DeanSurvey | null>(null)
 const search = ref('')
 const statusFilter = ref<string | null>(null)
-const typeFilter = ref<string | null>(null)
+
+// Date picker menu state
+const startDateMenu = ref(false)
+const endDateMenu = ref(false)
 
 const form = ref<DeanSurveyForm>({
   title: '',
   instruction: '',
-  survey_type: 'faculty_evaluation',
   survey_start: '',
   survey_end: '',
   is_active: 'Draft',
@@ -88,11 +88,6 @@ const statusOptions = [
   { title: 'Archived', value: 'Archived' },
 ]
 
-const surveyTypeOptions = [
-  { title: 'Faculty Evaluation', value: 'faculty_evaluation' },
-  { title: 'Program Assessment', value: 'program_assessment' },
-]
-
 // ==================== COMPUTED ====================
 
 const filteredSurveys = computed(() => {
@@ -100,9 +95,6 @@ const filteredSurveys = computed(() => {
 
   if (statusFilter.value)
     result = result.filter((s: DeanSurvey) => s.is_active === statusFilter.value)
-
-  if (typeFilter.value)
-    result = result.filter((s: DeanSurvey) => s.survey_type === typeFilter.value)
 
   if (search.value) {
     const searchLower = search.value.toLowerCase()
@@ -118,7 +110,6 @@ const filteredSurveys = computed(() => {
 
 const headers = [
   { title: 'Title', key: 'title', sortable: true },
-  { title: 'Type', key: 'survey_type', sortable: true },
   { title: 'Academic Term', key: 'acadTerm', sortable: false },
   { title: 'Status', key: 'is_active', sortable: true },
   { title: 'Questions', key: 'questions', sortable: false, align: 'center' as const },
@@ -135,14 +126,6 @@ const getStatusColor = (status: string) => {
     case 'Archived': return 'secondary'
     default: return 'default'
   }
-}
-
-const getSurveyTypeColor = (type: string) => {
-  return type === 'faculty_evaluation' ? 'info' : 'warning'
-}
-
-const getSurveyTypeLabel = (type: string) => {
-  return type === 'faculty_evaluation' ? 'Faculty' : 'Program'
 }
 
 const getAcademicTermDisplay = (survey: DeanSurvey): string => {
@@ -176,6 +159,93 @@ const getProgress = (survey: DeanSurvey): number => {
   return Math.round((responseCount / total) * 100)
 }
 
+// Date picker helpers
+const formatDateDisplay = (dateString: string): string => {
+  if (!dateString) return ''
+  const date = new Date(dateString)
+  if (isNaN(date.getTime())) return ''
+  return date.toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+const startDateValue = computed({
+  get: () => form.value.survey_start ? new Date(form.value.survey_start) : null,
+  set: (val: Date | null) => {
+    if (val) {
+      // Preserve existing time or default to start of day
+      const existing = form.value.survey_start ? new Date(form.value.survey_start) : null
+      if (existing) {
+        val.setHours(existing.getHours(), existing.getMinutes())
+      }
+      form.value.survey_start = val.toISOString()
+    }
+    else {
+      form.value.survey_start = ''
+    }
+  },
+})
+
+const endDateValue = computed({
+  get: () => form.value.survey_end ? new Date(form.value.survey_end) : null,
+  set: (val: Date | null) => {
+    if (val) {
+      // Preserve existing time or default to end of day
+      const existing = form.value.survey_end ? new Date(form.value.survey_end) : null
+      if (existing) {
+        val.setHours(existing.getHours(), existing.getMinutes())
+      }
+      else {
+        val.setHours(23, 59)
+      }
+      form.value.survey_end = val.toISOString()
+    }
+    else {
+      form.value.survey_end = ''
+    }
+  },
+})
+
+const startTimeValue = computed({
+  get: () => {
+    if (!form.value.survey_start) return '00:00'
+    const date = new Date(form.value.survey_start)
+    return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+  },
+  set: (val: string) => {
+    if (!form.value.survey_start) {
+      const now = new Date()
+      form.value.survey_start = now.toISOString()
+    }
+    const [hours, minutes] = val.split(':').map(Number)
+    const date = new Date(form.value.survey_start)
+    date.setHours(hours, minutes)
+    form.value.survey_start = date.toISOString()
+  },
+})
+
+const endTimeValue = computed({
+  get: () => {
+    if (!form.value.survey_end) return '23:59'
+    const date = new Date(form.value.survey_end)
+    return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+  },
+  set: (val: string) => {
+    if (!form.value.survey_end) {
+      const now = new Date()
+      form.value.survey_end = now.toISOString()
+    }
+    const [hours, minutes] = val.split(':').map(Number)
+    const date = new Date(form.value.survey_end)
+    date.setHours(hours, minutes)
+    form.value.survey_end = date.toISOString()
+  },
+})
+
 // ==================== FETCH FUNCTIONS ====================
 
 const fetchAcademicTerms = async () => {
@@ -193,6 +263,21 @@ const fetchAcademicTerms = async () => {
 const fetchSurveys = async () => {
   isLoading.value = true
   try {
+    // Get active deans count once for all surveys
+    let activeDeanCount = 0
+    try {
+      const deansRes = await $api('/items/Teachers', {
+        params: {
+          filter: { position: { _eq: 'Dean' }, is_active: { _eq: 'Active' } },
+          aggregate: { count: '*' },
+        },
+      })
+      activeDeanCount = Number(deansRes.data?.[0]?.count) || 0
+    }
+    catch {
+      activeDeanCount = 0
+    }
+
     const res = await $api('/items/DeanEvaluationSurvey', {
       params: {
         fields: [
@@ -200,6 +285,7 @@ const fetchSurveys = async () => {
           'academic_term_id.*',
           'question_groups.*',
           'question_groups.questions.*',
+          'teachers_to_evaluate.Teachers_id',
         ],
         sort: ['-id'],
       },
@@ -207,9 +293,9 @@ const fetchSurveys = async () => {
 
     const surveys: DeanSurvey[] = res.data || []
 
-    // Fetch response counts and calculate expected totals
     for (const survey of surveys) {
       if (survey.id) {
+        // Get response count for this survey
         try {
           const responseRes = await $api('/items/DeanSurveyResponses', {
             params: {
@@ -217,51 +303,15 @@ const fetchSurveys = async () => {
               aggregate: { count: '*' },
             },
           })
-          survey._responseCount = responseRes.data?.[0]?.count ?? 0
+          survey._responseCount = Number(responseRes.data?.[0]?.count) || 0
         }
         catch {
           survey._responseCount = 0
         }
 
-        // Calculate expected responses based on survey type
-        if (survey.survey_type === 'faculty_evaluation') {
-          // For faculty evaluation: count deans * teachers in their departments
-          try {
-            const deansRes = await $api('/items/Teachers', {
-              params: {
-                filter: { position: { _eq: 'Dean' }, is_active: { _eq: 'Active' } },
-                aggregate: { count: '*' },
-              },
-            })
-            const teachersRes = await $api('/items/Teachers', {
-              params: {
-                filter: { position: { _eq: 'Professor' }, is_active: { _eq: 'Active' } },
-                aggregate: { count: '*' },
-              },
-            })
-            const deanCount = deansRes.data?.[0]?.count ?? 0
-            const teacherCount = teachersRes.data?.[0]?.count ?? 0
-            survey._totalExpected = deanCount * teacherCount
-          }
-          catch {
-            survey._totalExpected = 0
-          }
-        }
-        else {
-          // For program assessment: count active deans
-          try {
-            const deansRes = await $api('/items/Teachers', {
-              params: {
-                filter: { position: { _eq: 'Dean' }, is_active: { _eq: 'Active' } },
-                aggregate: { count: '*' },
-              },
-            })
-            survey._totalExpected = deansRes.data?.[0]?.count ?? 0
-          }
-          catch {
-            survey._totalExpected = 0
-          }
-        }
+        // Calculate expected responses: deans × teachers_to_evaluate
+        const teachersCount = (survey as any).teachers_to_evaluate?.length || 0
+        survey._totalExpected = activeDeanCount * teachersCount
       }
     }
 
@@ -282,7 +332,6 @@ const openCreateDialog = () => {
   form.value = {
     title: '',
     instruction: '',
-    survey_type: 'faculty_evaluation',
     survey_start: '',
     survey_end: '',
     is_active: 'Draft',
@@ -296,12 +345,11 @@ const saveSurvey = async () => {
 
   isSaving.value = true
   try {
-    await $api('/items/DeanEvaluationSurvey', {
+    const response = await $api('/items/DeanEvaluationSurvey', {
       method: 'POST',
       body: {
         title: form.value.title,
         instruction: form.value.instruction,
-        survey_type: form.value.survey_type,
         survey_start: form.value.survey_start || null,
         survey_end: form.value.survey_end || null,
         is_active: form.value.is_active,
@@ -310,7 +358,15 @@ const saveSurvey = async () => {
     })
 
     isCreateDialogOpen.value = false
-    await fetchSurveys()
+
+    // Navigate to the detail page to add questions
+    const createdSurveyId = response.data?.id
+    if (createdSurveyId) {
+      router.push(`/surveys/dean-evaluation/${createdSurveyId}`)
+    }
+    else {
+      await fetchSurveys()
+    }
   }
   catch (error) {
     console.error('Failed to create dean survey:', error)
@@ -364,8 +420,7 @@ onMounted(() => {
     <VCard>
       <VCardTitle class="pa-6">
         <div class="d-flex align-center">
-          <VIcon icon="ri-user-settings-line" size="28" class="me-3" />
-          <span class="text-h5">Dean Evaluation</span>
+          <span class="text-h5">Dean Evaluation Survey</span>
         </div>
       </VCardTitle>
 
@@ -380,18 +435,6 @@ onMounted(() => {
           variant="outlined"
           hide-details
           style="max-width: 300px;"
-        />
-        <VSelect
-          v-model="typeFilter"
-          :items="surveyTypeOptions"
-          item-title="title"
-          item-value="value"
-          label="Type"
-          density="compact"
-          variant="outlined"
-          hide-details
-          clearable
-          style="max-width: 180px;"
         />
         <VSelect
           v-model="statusFilter"
@@ -430,16 +473,8 @@ onMounted(() => {
           </a>
         </template>
 
-        <template #[`item.survey_type`]="{ item }">
-          <VChip :color="getSurveyTypeColor(item.survey_type)" size="small" variant="tonal">
-            {{ getSurveyTypeLabel(item.survey_type) }}
-          </VChip>
-        </template>
-
         <template #[`item.acadTerm`]="{ item }">
-          <VChip size="small" variant="tonal" color="secondary">
-            {{ getAcademicTermDisplay(item) }}
-          </VChip>
+          <span class="text-body-2">{{ getAcademicTermDisplay(item) }}</span>
         </template>
 
         <template #[`item.is_active`]="{ item }">
@@ -449,9 +484,7 @@ onMounted(() => {
         </template>
 
         <template #[`item.questions`]="{ item }">
-          <VChip size="small" variant="tonal" color="info">
-            {{ getQuestionsCount(item) }}
-          </VChip>
+          <span class="text-body-2 font-weight-medium">{{ getQuestionsCount(item) }}</span>
         </template>
 
         <template #[`item.progress`]="{ item }">
@@ -546,17 +579,6 @@ onMounted(() => {
 
             <VCol cols="12" md="6">
               <VSelect
-                v-model="form.survey_type"
-                :items="surveyTypeOptions"
-                item-title="title"
-                item-value="value"
-                label="Evaluation Type"
-                variant="outlined"
-              />
-            </VCol>
-
-            <VCol cols="12" md="6">
-              <VSelect
                 v-model="form.academic_term_id"
                 :items="academicTerms"
                 :item-title="(item) => `${item.semester} - ${item.schoolYear}`"
@@ -577,42 +599,94 @@ onMounted(() => {
               />
             </VCol>
 
+            <!-- Start Date & Time -->
             <VCol cols="12" md="6">
-              <VTextField
-                v-model="form.survey_start"
-                label="Start Date"
-                type="date"
-                variant="outlined"
-              />
+              <VMenu
+                v-model="startDateMenu"
+                :close-on-content-click="false"
+                location="bottom start"
+              >
+                <template #activator="{ props }">
+                  <VTextField
+                    v-bind="props"
+                    :model-value="formatDateDisplay(form.survey_start)"
+                    label="Start Date & Time"
+                    variant="outlined"
+                    prepend-inner-icon="ri-calendar-line"
+                    readonly
+                    clearable
+                    @click:clear="form.survey_start = ''"
+                  />
+                </template>
+                <VCard min-width="300">
+                  <VDatePicker
+                    v-model="startDateValue"
+                    show-adjacent-months
+                    hide-header
+                  />
+                  <VDivider />
+                  <div class="pa-3">
+                    <VTextField
+                      v-model="startTimeValue"
+                      label="Time"
+                      type="time"
+                      variant="outlined"
+                      density="compact"
+                      hide-details
+                    />
+                  </div>
+                  <VCardActions>
+                    <VSpacer />
+                    <VBtn variant="text" @click="startDateMenu = false">Done</VBtn>
+                  </VCardActions>
+                </VCard>
+              </VMenu>
             </VCol>
 
+            <!-- End Date & Time -->
             <VCol cols="12" md="6">
-              <VTextField
-                v-model="form.survey_end"
-                label="End Date"
-                type="date"
-                variant="outlined"
-              />
+              <VMenu
+                v-model="endDateMenu"
+                :close-on-content-click="false"
+                location="bottom start"
+              >
+                <template #activator="{ props }">
+                  <VTextField
+                    v-bind="props"
+                    :model-value="formatDateDisplay(form.survey_end)"
+                    label="End Date & Time"
+                    variant="outlined"
+                    prepend-inner-icon="ri-calendar-line"
+                    readonly
+                    clearable
+                    @click:clear="form.survey_end = ''"
+                  />
+                </template>
+                <VCard min-width="300">
+                  <VDatePicker
+                    v-model="endDateValue"
+                    show-adjacent-months
+                    hide-header
+                  />
+                  <VDivider />
+                  <div class="pa-3">
+                    <VTextField
+                      v-model="endTimeValue"
+                      label="Time"
+                      type="time"
+                      variant="outlined"
+                      density="compact"
+                      hide-details
+                    />
+                  </div>
+                  <VCardActions>
+                    <VSpacer />
+                    <VBtn variant="text" @click="endDateMenu = false">Done</VBtn>
+                  </VCardActions>
+                </VCard>
+              </VMenu>
             </VCol>
           </VRow>
-
-          <!-- Survey Type Info -->
-          <VAlert
-            v-if="form.survey_type"
-            :color="form.survey_type === 'faculty_evaluation' ? 'info' : 'warning'"
-            variant="tonal"
-            class="mt-4"
-          >
-            <template #title>
-              {{ form.survey_type === 'faculty_evaluation' ? 'Faculty Evaluation' : 'Program Assessment' }}
-            </template>
-            <template v-if="form.survey_type === 'faculty_evaluation'">
-              Deans will evaluate each faculty member (professor) in their department individually.
-            </template>
-            <template v-else>
-              Deans will evaluate programs such as departmental budget proposals and other program-related assessments.
-            </template>
-          </VAlert>
         </VCardText>
 
         <VDivider />
@@ -628,7 +702,7 @@ onMounted(() => {
             :disabled="!form.title.trim()"
             @click="saveSurvey"
           >
-            Create
+            Create & Add Questions
           </VBtn>
         </VCardActions>
       </VCard>

@@ -6,57 +6,72 @@ export default [
     to: { name: 'dashboard' },
     icon: { icon: 'ri-home-smile-line' },
   },
-
-  { heading: 'Academic Management' },
   {
-    title: 'Programs',
-    to: { name: 'programs' },
-    icon: { icon: 'ri-book-2-line' },
+    title: 'Academic',
+    icon: { icon: 'ri-graduation-cap-line' },
+    children: [
+      {
+        title: 'Programs',
+        to: { name: 'programs' },
+      },
+      {
+        title: 'Courses',
+        to: { name: 'courses' },
+      },
+      {
+        title: 'Class Sections',
+        to: { name: 'class-sections' },
+      },
+      {
+        title: 'Academic Terms',
+        to: { name: 'academic-terms' },
+      },
+    ],
   },
   {
-    title: 'Courses',
-    to: { name: 'courses' },
-    icon: { icon: 'ri-booklet-line' },
-  },
-  {
-    title: 'Class Sections',
-    to: { name: 'class-sections' },
-    icon: { icon: 'ri-layout-grid-line' },
-  },
-  {
-    title: 'Academic Terms',
-    to: { name: 'academic-terms' },
-    icon: { icon: 'ri-calendar-line' },
-  },
-
-  { heading: 'Class & Department' },
-  {
-    title: 'Departments',
-    to: { name: 'departments' },
+    title: 'Class & Department',
     icon: { icon: 'ri-building-line' },
+    children: [
+      {
+        title: 'Departments',
+        to: { name: 'departments' },
+      },
+      {
+        title: 'School Offices',
+        to: { name: 'school-offices' },
+      },
+      {
+        title: 'Class List',
+        to: { name: 'classes' },
+      },
+    ],
   },
   {
-    title: 'Class List',
-    to: { name: 'classes' },
+    title: 'Users',
     icon: { icon: 'ri-group-line' },
+    children: [
+      {
+        title: 'Students',
+        to: { name: 'students' },
+      },
+      {
+        title: 'Teachers',
+        to: { name: 'teachers' },
+      },
+    ],
   },
-
-  { heading: 'Users' },
   {
-    title: 'Students',
-    to: { name: 'students' },
-    icon: { icon: 'ri-user-3-line' },
-  },
-  {
-    title: 'Teachers',
-    to: { name: 'teachers' },
-    icon: { icon: 'ri-user-star-line' },
-  },
-
-  { heading: 'Surveys' },
-  {
-    title: 'Survey Management',
-    to: { name: 'surveys' },
+    title: 'Survey',
     icon: { icon: 'ri-survey-line' },
+    children: [
+      {
+        title: 'Student Evaluation',
+        to: { name: 'surveys-student-evaluation' },
+      },
+      {
+        title: 'Dean Evaluation',
+        to: { name: 'surveys-dean-evaluation' },
+      },
+    ],
   },
 ] as VerticalNavItems

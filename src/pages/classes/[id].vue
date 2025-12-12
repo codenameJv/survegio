@@ -69,7 +69,7 @@ const search = ref('')
 
 // Table headers for students
 const headers = [
-  { title: 'No.', key: 'index', sortable: false, width: '60px' },
+  { title: 'ID', key: 'id', sortable: true, width: '80px' },
   { title: 'Student No.', key: 'student_number', sortable: true },
   { title: 'Name', key: 'name', sortable: true },
   { title: 'Gender', key: 'gender', sortable: true },
@@ -341,6 +341,7 @@ onMounted(() => {
           <VRow>
             <VCol
               cols="12"
+              sm="6"
               md="3"
             >
               <div class="text-overline text-medium-emphasis mb-1">
@@ -352,12 +353,13 @@ onMounted(() => {
             </VCol>
             <VCol
               cols="12"
+              sm="6"
               md="3"
             >
               <div class="text-overline text-medium-emphasis mb-1">
                 Course
               </div>
-              <div class="text-h6">
+              <div class="text-body-1 font-weight-medium">
                 {{ getCourseCode() }}
               </div>
               <div class="text-body-2 text-medium-emphasis">
@@ -366,6 +368,7 @@ onMounted(() => {
             </VCol>
             <VCol
               cols="12"
+              sm="6"
               md="3"
             >
               <div class="text-overline text-medium-emphasis mb-1">
@@ -376,28 +379,29 @@ onMounted(() => {
                 <VChip
                   v-if="getAcademicTermStatus()"
                   :color="getAcademicTermStatus() === 'Active' ? 'success' : getAcademicTermStatus() === 'Draft' ? 'warning' : 'secondary'"
-                  size="small"
-                  variant="tonal"
+                  size="x-small"
                 >
                   {{ getAcademicTermStatus() }}
                 </VChip>
               </div>
             </VCol>
+          </VRow>
+          <VRow class="mt-4">
             <VCol
               cols="12"
+              sm="6"
               md="3"
             >
               <div class="text-overline text-medium-emphasis mb-1">
                 Department
               </div>
               <div class="text-body-1">
-                {{ getDepartment() }}
+                {{ getDepartment() || '-' }}
               </div>
             </VCol>
-          </VRow>
-          <VRow class="mt-2">
             <VCol
               cols="12"
+              sm="6"
               md="3"
             >
               <div class="text-overline text-medium-emphasis mb-1">
@@ -452,8 +456,8 @@ onMounted(() => {
           hover
           item-value="id"
         >
-          <template #item.index="{ index }">
-            <span class="text-medium-emphasis">{{ index + 1 }}</span>
+          <template #item.id="{ item }">
+            <span class="text-medium-emphasis">{{ item.id }}</span>
           </template>
 
           <template #item.student_number="{ item }">

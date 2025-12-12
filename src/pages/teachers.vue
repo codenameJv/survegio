@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { $api } from '@/utils/api'
+import { $api } from '@/utils/api';
 
 definePage({
   meta: {
@@ -56,6 +56,8 @@ const createdCredentials = ref<AccountCredential[]>([])
 
 // Password reset state
 const isResetPasswordDialogOpen = ref(false)
+const isResetConfirmDialogOpen = ref(false)
+const teacherToReset = ref<Teacher | null>(null)
 const resetPasswordCredential = ref<AccountCredential | null>(null)
 const isResettingPassword = ref(false)
 
@@ -75,6 +77,7 @@ const form = ref({
 const search = ref('')
 const departmentFilter = ref<number | null>(null)
 const statusFilter = ref<string | null>(null)
+const positionFilter = ref<string | null>(null)
 
 // Options
 const positionOptions = ['Dean', 'Professor']
@@ -106,7 +109,7 @@ const isTeacherInDepartment = (teacher: Teacher, deptId: number): boolean => {
   })
 }
 
-// Filtered teachers by department and status
+// Filtered teachers by department, status, and position
 const filteredTeachers = computed(() => {
   let result = teachers.value
 
@@ -115,6 +118,9 @@ const filteredTeachers = computed(() => {
 
   if (statusFilter.value)
     result = result.filter(teacher => teacher.is_active === statusFilter.value)
+
+  if (positionFilter.value)
+    result = result.filter(teacher => teacher.position === positionFilter.value)
 
   return result
 })
@@ -133,9 +139,9 @@ const headers = [
 
 // Get teacher full name
 const getFullName = (teacher: Teacher) => {
-  const middle = teacher.middle_name ? ` ${teacher.middle_name}.` : ''
+  const middle = teacher.middle_name ? ` ${teacher.middle_name}` : ''
 
-  return `${teacher.first_name}${middle} ${teacher.last_name}`
+  return `${teacher.last_name}, ${teacher.first_name}${middle}`
 }
 
 // Get department name for a teacher - lookup by checking if teacher is in department's teacher_id
@@ -437,24 +443,60 @@ const copyCredentials = () => {
   navigator.clipboard.writeText(text)
 }
 
-// Reset password for a teacher (dean)
-const resetPassword = async (teacher: Teacher) => {
-  if (!teacher.user_id)
-    return
+// Export credentials to CSV
+const exportCredentials = () => {
+  if (createdCredentials.value.length === 0) return
+
+  // Create CSV content
+  const headers = ['Name', 'Email', 'Password']
+  const rows = createdCredentials.value.map(c => [
+    `"${c.name}"`,
+    `"${c.email}"`,
+    `"${c.password}"`,
+  ])
+
+  const csvContent = [
+    headers.join(','),
+    ...rows.map(row => row.join(',')),
+  ].join('\n')
+
+  // Create blob and download
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `teacher_accounts_${new Date().toISOString().split('T')[0]}.csv`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
+// Open confirmation dialog before resetting password
+const confirmResetPassword = (teacher: Teacher) => {
+  if (!teacher.user_id) return
+  teacherToReset.value = teacher
+  isResetConfirmDialogOpen.value = true
+}
+
+// Reset password for a teacher (dean) after confirmation
+const resetPassword = async () => {
+  if (!teacherToReset.value?.user_id) return
 
   isResettingPassword.value = true
+  isResetConfirmDialogOpen.value = false
 
   try {
     const password = generatePassword()
 
-    await $api(`/users/${teacher.user_id}`, {
+    await $api(`/users/${teacherToReset.value.user_id}`, {
       method: 'PATCH',
       body: { password },
     })
 
     resetPasswordCredential.value = {
-      name: getFullName(teacher),
-      email: teacher.email,
+      name: getFullName(teacherToReset.value),
+      email: teacherToReset.value.email,
       password,
     }
     isResetPasswordDialogOpen.value = true
@@ -464,16 +506,37 @@ const resetPassword = async (teacher: Teacher) => {
   }
   finally {
     isResettingPassword.value = false
+    teacherToReset.value = null
   }
 }
 
 // Copy single credential to clipboard
 const copySingleCredential = () => {
-  if (!resetPasswordCredential.value)
-    return
+  if (!resetPasswordCredential.value) return
   const c = resetPasswordCredential.value
   const text = `${c.name}\nEmail: ${c.email}\nPassword: ${c.password}`
   navigator.clipboard.writeText(text)
+}
+
+// Export single credential to CSV
+const exportSingleCredential = () => {
+  if (!resetPasswordCredential.value) return
+  const c = resetPasswordCredential.value
+
+  const csvContent = [
+    'Name,Email,Password',
+    `"${c.name}","${c.email}","${c.password}"`,
+  ].join('\n')
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `password_reset_${new Date().toISOString().split('T')[0]}.csv`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
 }
 
 // Fetch data on mount
@@ -488,7 +551,7 @@ onMounted(() => {
   <div>
     <VCard>
       <VCardTitle class="d-flex align-center pa-6">
-        <span class="text-h5">Teachers</span>
+        <span class="text-h5">Teacher Management</span>
         <VSpacer />
         <VTextField
           v-model="search"
@@ -517,6 +580,17 @@ onMounted(() => {
           v-model="statusFilter"
           :items="statusOptions"
           label="Status"
+          density="compact"
+          variant="outlined"
+          hide-details
+          clearable
+          class="me-4"
+          style="max-width: 150px;"
+        />
+        <VSelect
+          v-model="positionFilter"
+          :items="positionOptions"
+          label="Position"
           density="compact"
           variant="outlined"
           hide-details
@@ -628,7 +702,7 @@ onMounted(() => {
               size="small"
               color="warning"
               :loading="isResettingPassword"
-              @click="resetPassword(item)"
+              @click="confirmResetPassword(item)"
             >
               <VIcon icon="ri-lock-password-line" />
             </IconBtn>
@@ -838,6 +912,13 @@ onMounted(() => {
           >
             Copy All
           </VBtn>
+          <VBtn
+            variant="outlined"
+            prepend-icon="ri-download-line"
+            @click="exportCredentials"
+          >
+            Export CSV
+          </VBtn>
           <VSpacer />
           <VBtn
             color="primary"
@@ -849,7 +930,46 @@ onMounted(() => {
       </VCard>
     </VDialog>
 
-    <!-- Reset Password Dialog -->
+    <!-- Reset Password Confirmation Dialog -->
+    <VDialog
+      v-model="isResetConfirmDialogOpen"
+      max-width="400"
+    >
+      <VCard>
+        <VCardTitle class="pa-6">
+          Confirm Password Reset
+        </VCardTitle>
+
+        <VDivider />
+
+        <VCardText class="pa-6">
+          <p class="mb-2">Are you sure you want to reset the password for:</p>
+          <p class="font-weight-bold text-primary">{{ teacherToReset ? getFullName(teacherToReset) : '' }}</p>
+          <p class="text-medium-emphasis mt-2">{{ teacherToReset?.email }}</p>
+        </VCardText>
+
+        <VDivider />
+
+        <VCardActions class="pa-4">
+          <VSpacer />
+          <VBtn
+            variant="outlined"
+            @click="isResetConfirmDialogOpen = false"
+          >
+            Cancel
+          </VBtn>
+          <VBtn
+            color="warning"
+            :loading="isResettingPassword"
+            @click="resetPassword"
+          >
+            Reset Password
+          </VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
+
+    <!-- Reset Password Success Dialog -->
     <VDialog
       v-model="isResetPasswordDialogOpen"
       max-width="450"
@@ -895,6 +1015,13 @@ onMounted(() => {
             @click="copySingleCredential"
           >
             Copy
+          </VBtn>
+          <VBtn
+            variant="outlined"
+            prepend-icon="ri-download-line"
+            @click="exportSingleCredential"
+          >
+            Export CSV
           </VBtn>
           <VSpacer />
           <VBtn

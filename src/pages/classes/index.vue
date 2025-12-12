@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import Papa from 'papaparse'
 import { $api } from '@/utils/api'
+import Papa from 'papaparse'
 
 definePage({
   meta: {
@@ -1021,7 +1021,7 @@ onMounted(() => {
   <div>
     <VCard>
       <VCardTitle class="d-flex align-center pa-6">
-        <span class="text-h5">Class List</span>
+        <span class="text-h5">Class List Management</span>
         <VSpacer />
         <VTextField
           v-model="search"

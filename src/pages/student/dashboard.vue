@@ -18,7 +18,6 @@ interface AcademicTerm {
 interface StudentSurvey {
   id: number
   title: string
-  description: string
   is_active: string
   survey_start?: string
   survey_end?: string
@@ -103,7 +102,7 @@ const fetchStats = async () => {
     const studentId = userData?.student_id
 
     // Get total active surveys
-    const surveysRes = await $api('/items/StudentSatisfactionSurvey', {
+    const surveysRes = await $api('/items/StudentEvaluationSurvey', {
       params: {
         filter: { is_active: { _eq: 'Active' } },
         aggregate: { count: '*' },
@@ -113,7 +112,7 @@ const fetchStats = async () => {
 
     // Get completed surveys by this student
     if (studentId) {
-      const completedRes = await $api('/items/StudentSurveyResponse', {
+      const completedRes = await $api('/items/StudentSurveyResponses', {
         params: {
           filter: { student_id: { _eq: studentId } },
           aggregate: { count: '*' },
@@ -142,10 +141,10 @@ const fetchStats = async () => {
 // Fetch upcoming/active surveys
 const fetchUpcomingSurveys = async () => {
   try {
-    const res = await $api('/items/StudentSatisfactionSurvey', {
+    const res = await $api('/items/StudentEvaluationSurvey', {
       params: {
         filter: { is_active: { _eq: 'Active' } },
-        fields: ['id', 'title', 'description', 'is_active', 'survey_start', 'survey_end'],
+        fields: ['id', 'title', 'is_active', 'survey_start', 'survey_end'],
         limit: 5,
       },
     })
@@ -169,7 +168,7 @@ const fetchRecentActivity = async () => {
       return
     }
 
-    const res = await $api('/items/StudentSurveyResponse', {
+    const res = await $api('/items/StudentSurveyResponses', {
       params: {
         filter: { student_id: { _eq: studentId } },
         fields: ['id', 'submitted_at', 'survey_id.title'],
@@ -251,7 +250,7 @@ onMounted(() => {
         {{ permissionErrorMessage }}
         <div class="mt-2 text-caption">
           In Directus, go to Settings > Roles & Permissions > Student role and grant read access to:
-          <strong>StudentSatisfactionSurvey</strong>, <strong>StudentSurveyResponse</strong>, <strong>academicTerms</strong>
+          <strong>StudentEvaluationSurvey</strong>, <strong>StudentSurveyResponses</strong>, <strong>academicTerms</strong>
         </div>
       </VAlert>
 
@@ -349,7 +348,7 @@ onMounted(() => {
                   </VListItemTitle>
 
                   <VListItemSubtitle class="text-caption">
-                    {{ survey.description || 'Satisfaction Survey' }}
+                    Evaluation Survey
                   </VListItemSubtitle>
 
                   <template #append>

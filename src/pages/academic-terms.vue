@@ -34,10 +34,19 @@ const form = ref<AcademicTerm>({
 })
 
 const search = ref('')
+const statusFilter = ref<string | null>(null)
 
 // Options
 const semesterOptions = ['First Semester', 'Second Semester']
 const statusOptions = ['Draft', 'Active', 'Archived']
+
+// Filtered academic terms based on status
+const filteredAcademicTerms = computed(() => {
+  if (!statusFilter.value)
+    return academicTerms.value
+
+  return academicTerms.value.filter(term => term.status === statusFilter.value)
+})
 
 // Table headers
 const headers = [
@@ -240,7 +249,7 @@ onMounted(() => {
   <div>
     <VCard>
       <VCardTitle class="d-flex align-center pa-6">
-        <span class="text-h5">Academic Terms</span>
+        <span class="text-h5">Academic Terms Management</span>
         <VSpacer />
         <VTextField
           v-model="search"
@@ -251,6 +260,17 @@ onMounted(() => {
           hide-details
           class="me-4"
           style="max-width: 300px;"
+        />
+        <VSelect
+          v-model="statusFilter"
+          :items="statusOptions"
+          label="Status"
+          density="compact"
+          variant="outlined"
+          hide-details
+          clearable
+          class="me-4"
+          style="max-width: 150px;"
         />
         <VBtn
           color="primary"
@@ -265,7 +285,7 @@ onMounted(() => {
 
       <VDataTable
         :headers="headers"
-        :items="academicTerms"
+        :items="filteredAcademicTerms"
         :search="search"
         :loading="isLoading"
         hover

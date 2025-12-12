@@ -192,7 +192,7 @@ onMounted(() => {
   <div>
     <VCard>
       <VCardTitle class="d-flex align-center pa-6">
-        <span class="text-h5">Class Sections</span>
+        <span class="text-h5">Class Sections Management</span>
         <VSpacer />
         <VTextField
           v-model="search"

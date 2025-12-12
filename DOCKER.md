@@ -5,7 +5,7 @@ This document provides comprehensive instructions for deploying the Survegio app
 ## Architecture Overview
 
 The Survegio application consists of two main services:
-
+ 
 1. **Frontend**: Vue.js 3 application served via Nginx
 2. **Backend**: Directus CMS with SQLite database
 
