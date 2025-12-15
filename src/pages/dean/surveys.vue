@@ -65,6 +65,7 @@ const isLoading = ref(true)
 const activeTab = ref('pending')
 const pendingEvaluations = ref<PendingEvaluation[]>([])
 const completedResponses = ref<CompletedResponse[]>([])
+const deanDepartmentId = ref<number | null>(null)
 const hasPermissionError = ref(false)
 
 // ==================== COMPUTED ====================
@@ -80,7 +81,9 @@ const fetchData = async () => {
   isLoading.value = true
   hasPermissionError.value = false
   try {
-    // Fetch pending evaluations and completed responses in parallel
+    // First fetch dean's department
+    await fetchDeanDepartment()
+    // Then fetch pending evaluations and completed responses in parallel
     await Promise.all([
       fetchPendingEvaluations(),
       fetchCompletedResponses(),
@@ -97,6 +100,36 @@ const fetchData = async () => {
   }
 }
 
+// Fetch dean's department
+const fetchDeanDepartment = async () => {
+  try {
+    const userData = useCookie('userData').value as any
+    const deanId = userData?.dean_id
+
+    if (!deanId) {
+      deanDepartmentId.value = null
+      return
+    }
+
+    const deanRes = await $api(`/items/Teachers/${deanId}`, {
+      params: {
+        fields: ['id', 'Department.Department_id'],
+      },
+    })
+
+    // Department is M2M junction, get the first department
+    const departments = deanRes.data?.Department || []
+    if (departments.length > 0) {
+      const deptId = departments[0].Department_id
+      deanDepartmentId.value = typeof deptId === 'object' ? deptId?.id : deptId
+    }
+  }
+  catch (error) {
+    console.error('Failed to fetch dean department:', error)
+    deanDepartmentId.value = null
+  }
+}
+
 // Fetch pending evaluations using teachers_to_evaluate from surveys
 const fetchPendingEvaluations = async () => {
   try {
@@ -109,8 +142,7 @@ const fetchPendingEvaluations = async () => {
       return
     }
 
-    // Fetch ALL active surveys with their teachers_to_evaluate
-    // All deans see all active surveys - no filtering by assigned_deans
+    // Fetch active surveys with teachers and their departments
     const res = await $api('/items/DeanEvaluationSurvey', {
       params: {
         filter: { is_active: { _eq: 'Active' } },
@@ -120,6 +152,7 @@ const fetchPendingEvaluations = async () => {
           'teachers_to_evaluate.Teachers_id.first_name',
           'teachers_to_evaluate.Teachers_id.last_name',
           'teachers_to_evaluate.Teachers_id.position',
+          'teachers_to_evaluate.Teachers_id.Department.Department_id',
           'question_groups.*',
           'question_groups.questions.*',
         ],
@@ -150,45 +183,47 @@ const fetchPendingEvaluations = async () => {
       console.error('Failed to fetch completed responses:', err)
     }
 
-    // Build pending evaluations - one entry per (survey, teacher) not yet completed
+    // Build pending evaluations - only teachers in dean's department
     const evaluations: PendingEvaluation[] = []
 
-    for (const survey of allSurveys) {
-      const teachersToEvaluate = survey.teachers_to_evaluate || []
+    // If dean has no department set, don't show any evaluations
+    if (deanDepartmentId.value !== null) {
+      for (const survey of allSurveys) {
+        const teachersToEvaluate = survey.teachers_to_evaluate || []
 
-      if (teachersToEvaluate.length > 0) {
-        // Survey has specific teachers to evaluate
-        for (const assignment of teachersToEvaluate) {
-          const teacher = typeof assignment.Teachers_id === 'object'
-            ? assignment.Teachers_id
-            : null
+        if (teachersToEvaluate.length > 0) {
+          // Survey has specific teachers to evaluate
+          for (const assignment of teachersToEvaluate) {
+            const teacher = typeof assignment.Teachers_id === 'object'
+              ? assignment.Teachers_id
+              : null
 
-          if (!teacher) continue
+            if (!teacher) continue
 
-          const isCompleted = completedEvaluations.some(
-            c => c.surveyId === survey.id && c.teacherId === teacher.id,
-          )
+            // Check if teacher belongs to dean's department
+            const teacherDepts = (teacher as any).Department || []
+            if (teacherDepts.length === 0) continue
 
-          if (!isCompleted) {
-            evaluations.push({
-              survey,
-              teacher: teacher as Teacher,
-              isCompleted: false,
+            const isInDeanDept = teacherDepts.some((d: any) => {
+              const deptId = typeof d.Department_id === 'object' ? d.Department_id?.id : d.Department_id
+              return deptId === deanDepartmentId.value
             })
+
+            // Skip teachers not in dean's department
+            if (!isInDeanDept) continue
+
+            const isCompleted = completedEvaluations.some(
+              c => c.surveyId === survey.id && c.teacherId === teacher.id,
+            )
+
+            if (!isCompleted) {
+              evaluations.push({
+                survey,
+                teacher: teacher as Teacher,
+                isCompleted: false,
+              })
+            }
           }
-        }
-      }
-      else {
-        // Survey has no teachers assigned - show as general survey (no teacher)
-        const isCompleted = completedEvaluations.some(
-          c => c.surveyId === survey.id && (c.teacherId === null || c.teacherId === undefined),
-        )
-        if (!isCompleted) {
-          evaluations.push({
-            survey,
-            teacher: undefined,
-            isCompleted: false,
-          })
         }
       }
     }

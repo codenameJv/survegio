@@ -15,6 +15,13 @@ interface AcademicTerm {
   status: string
 }
 
+interface Teacher {
+  id: number
+  first_name: string
+  last_name: string
+  position?: string
+}
+
 interface DeanSurvey {
   id: number
   title: string
@@ -30,10 +37,16 @@ interface RecentActivity {
   submittedAt: string
 }
 
+interface PendingEvaluation {
+  survey: DeanSurvey
+  teacher: Teacher
+}
+
 // State
 const isLoading = ref(true)
 const currentTerm = ref<AcademicTerm | null>(null)
 const currentDean = ref<any>(null)
+const deanDepartmentId = ref<number | null>(null)
 const hasPermissionError = ref(false)
 const permissionErrorMessage = ref('')
 
@@ -44,7 +57,7 @@ const stats = ref({
   completionRate: 0,
 })
 
-const upcomingSurveys = ref<DeanSurvey[]>([])
+const pendingEvaluations = ref<PendingEvaluation[]>([])
 const recentActivity = ref<RecentActivity[]>([])
 
 // Fetch all dashboard data
@@ -55,7 +68,7 @@ const fetchDashboardData = async () => {
     await Promise.all([
       fetchCurrentTerm(),
       fetchStats(),
-      fetchUpcomingSurveys(),
+      fetchPendingEvaluations(),
       fetchRecentActivity(),
     ])
   }
@@ -67,12 +80,31 @@ const fetchDashboardData = async () => {
   }
 }
 
-// Get current dean from user data
+// Get current dean from user data and fetch their department
 const fetchCurrentDean = async () => {
   try {
     const userData = useCookie('userData').value as any
     if (userData?.dean_id) {
       currentDean.value = userData
+
+      // Fetch dean's department from Teachers table
+      try {
+        const deanRes = await $api(`/items/Teachers/${userData.dean_id}`, {
+          params: {
+            fields: ['id', 'Department.Department_id'],
+          },
+        })
+        // Department is M2M junction, get the first department
+        const departments = deanRes.data?.Department || []
+        if (departments.length > 0) {
+          const deptId = departments[0].Department_id
+          deanDepartmentId.value = typeof deptId === 'object' ? deptId?.id : deptId
+        }
+      }
+      catch (err) {
+        console.error('Failed to fetch dean department:', err)
+        deanDepartmentId.value = null
+      }
     }
   }
   catch (error) {
@@ -96,7 +128,7 @@ const fetchCurrentTerm = async () => {
   }
 }
 
-// Fetch stats - now uses teachers_to_evaluate directly
+// Fetch stats - only counts surveys with teachers in dean's department
 const fetchStats = async () => {
   try {
     const userData = useCookie('userData').value as any
@@ -107,22 +139,45 @@ const fetchStats = async () => {
       return
     }
 
-    // Get all active surveys with teachers_to_evaluate
-    // All deans see all active surveys
+    // Get all active surveys with teachers_to_evaluate and their departments
     const surveysRes = await $api('/items/DeanEvaluationSurvey', {
       params: {
         filter: { is_active: { _eq: 'Active' } },
-        fields: ['id', 'teachers_to_evaluate.Teachers_id'],
+        fields: [
+          'id',
+          'teachers_to_evaluate.Teachers_id.id',
+          'teachers_to_evaluate.Teachers_id.Department.Department_id',
+        ],
       },
     })
 
     const allSurveys = surveysRes.data || []
 
-    // Total expected evaluations = sum of teachers_to_evaluate across all surveys
+    // Count only teachers in dean's department
     let totalExpected = 0
-    for (const survey of allSurveys) {
-      const teacherCount = survey.teachers_to_evaluate?.length || 0
-      totalExpected += teacherCount
+
+    // If dean has no department set, don't count any surveys
+    if (deanDepartmentId.value !== null) {
+      for (const survey of allSurveys) {
+        const teachers = survey.teachers_to_evaluate || []
+        for (const assignment of teachers) {
+          const teacher = assignment.Teachers_id
+          if (!teacher) continue
+
+          // Check if teacher belongs to dean's department
+          const teacherDepts = teacher.Department || []
+          if (teacherDepts.length === 0) continue
+
+          const isInDeanDept = teacherDepts.some((d: any) => {
+            const deptId = typeof d.Department_id === 'object' ? d.Department_id?.id : d.Department_id
+            return deptId === deanDepartmentId.value
+          })
+
+          if (isInDeanDept) {
+            totalExpected++
+          }
+        }
+      }
     }
 
     stats.value.totalSurveys = totalExpected
@@ -162,25 +217,89 @@ const fetchStats = async () => {
   }
 }
 
-// Fetch upcoming/active surveys - all deans see all active surveys
-const fetchUpcomingSurveys = async () => {
+// Fetch pending evaluations - actual pending items for this dean
+const fetchPendingEvaluations = async () => {
   try {
+    const userData = useCookie('userData').value as any
+    const deanId = userData?.dean_id
+
+    if (!deanId || deanDepartmentId.value === null) {
+      pendingEvaluations.value = []
+      return
+    }
+
+    // Fetch active surveys with teachers and their departments
     const res = await $api('/items/DeanEvaluationSurvey', {
       params: {
         filter: { is_active: { _eq: 'Active' } },
-        fields: ['id', 'title', 'is_active', 'survey_start', 'survey_end', 'teachers_to_evaluate.Teachers_id'],
-        limit: 5,
+        fields: [
+          'id',
+          'title',
+          'is_active',
+          'teachers_to_evaluate.Teachers_id.id',
+          'teachers_to_evaluate.Teachers_id.first_name',
+          'teachers_to_evaluate.Teachers_id.last_name',
+          'teachers_to_evaluate.Teachers_id.position',
+          'teachers_to_evaluate.Teachers_id.Department.Department_id',
+        ],
       },
     })
 
-    // Only show surveys that have teachers assigned
-    upcomingSurveys.value = (res.data || []).filter((s: any) =>
-      s.teachers_to_evaluate && s.teachers_to_evaluate.length > 0,
-    )
+    const allSurveys = res.data || []
+
+    // Get completed evaluations by this dean
+    const completedRes = await $api('/items/DeanSurveyResponses', {
+      params: {
+        filter: { dean_id: { _eq: deanId } },
+        fields: ['survey_id', 'evaluated_teached_id'],
+      },
+    })
+
+    const completedEvaluations = (completedRes.data || []).map((r: any) => ({
+      surveyId: typeof r.survey_id === 'object' ? r.survey_id?.id : r.survey_id,
+      teacherId: typeof r.evaluated_teached_id === 'object' ? r.evaluated_teached_id?.id : r.evaluated_teached_id,
+    }))
+
+    // Build pending evaluations list
+    const evaluations: PendingEvaluation[] = []
+
+    for (const survey of allSurveys) {
+      const teachers = survey.teachers_to_evaluate || []
+
+      for (const assignment of teachers) {
+        const teacher = assignment.Teachers_id
+        if (!teacher) continue
+
+        // Check if teacher belongs to dean's department
+        const teacherDepts = teacher.Department || []
+        if (teacherDepts.length === 0) continue
+
+        const isInDeanDept = teacherDepts.some((d: any) => {
+          const deptId = typeof d.Department_id === 'object' ? d.Department_id?.id : d.Department_id
+          return deptId === deanDepartmentId.value
+        })
+
+        if (!isInDeanDept) continue
+
+        // Check if already completed
+        const isCompleted = completedEvaluations.some(
+          c => c.surveyId === survey.id && c.teacherId === teacher.id,
+        )
+
+        if (!isCompleted) {
+          evaluations.push({
+            survey,
+            teacher: teacher as Teacher,
+          })
+        }
+      }
+    }
+
+    pendingEvaluations.value = evaluations.slice(0, 5)
   }
   catch (error) {
-    console.error('Failed to fetch upcoming surveys:', error)
-    upcomingSurveys.value = []
+    console.error('Failed to fetch pending evaluations:', error)
+    pendingEvaluations.value = []
   }
 }
 
@@ -240,6 +359,16 @@ const router = useRouter()
 
 const goToSurveys = () => {
   router.push('/dean/surveys')
+}
+
+// Helper: Get teacher full name
+const getTeacherName = (teacher: Teacher): string => {
+  return `${teacher.first_name} ${teacher.last_name}`
+}
+
+// Navigate to evaluation
+const openEvaluation = (evaluation: PendingEvaluation) => {
+  router.push(`/dean/surveys-${evaluation.survey.id}?teacher=${evaluation.teacher.id}`)
 }
 
 onMounted(() => {
@@ -345,13 +474,13 @@ onMounted(() => {
       </VRow>
 
       <VRow>
-        <!-- Upcoming Surveys -->
+        <!-- Pending Evaluations -->
         <VCol cols="12" md="6">
           <VCard>
             <VCardTitle class="d-flex align-center justify-space-between pa-5">
               <div class="d-flex align-center">
-                <VIcon icon="ri-calendar-todo-line" class="me-2" />
-                Active Surveys
+                <VIcon icon="ri-time-line" class="me-2" />
+                Pending Evaluations
               </div>
               <VBtn variant="text" color="primary" size="small" @click="goToSurveys">
                 View All
@@ -360,43 +489,44 @@ onMounted(() => {
 
             <VDivider />
 
-            <VCardText v-if="upcomingSurveys.length === 0" class="text-center pa-8">
-              <VIcon icon="ri-inbox-line" size="48" color="medium-emphasis" class="mb-4" />
-              <p class="text-body-1 text-medium-emphasis">No active surveys</p>
+            <VCardText v-if="pendingEvaluations.length === 0" class="text-center pa-8">
+              <VIcon icon="ri-checkbox-circle-line" size="48" color="success" class="mb-4" />
+              <p class="text-body-1 text-medium-emphasis">All caught up!</p>
+              <p class="text-body-2 text-medium-emphasis">No pending evaluations</p>
             </VCardText>
 
             <VList v-else lines="two" class="pa-0">
-              <template v-for="(survey, index) in upcomingSurveys" :key="survey.id">
-                <VListItem>
+              <template v-for="(evaluation, index) in pendingEvaluations" :key="`${evaluation.survey.id}-${evaluation.teacher.id}`">
+                <VListItem class="cursor-pointer" @click="openEvaluation(evaluation)">
                   <template #prepend>
                     <VAvatar
-                      color="info"
+                      color="primary"
                       variant="tonal"
                       size="36"
                     >
                       <VIcon
-                        icon="ri-survey-line"
+                        icon="ri-user-star-line"
                         size="18"
                       />
                     </VAvatar>
                   </template>
 
                   <VListItemTitle class="font-weight-medium">
-                    {{ survey.title }}
+                    {{ getTeacherName(evaluation.teacher) }}
                   </VListItemTitle>
 
                   <VListItemSubtitle class="text-caption">
-                    Dean Evaluation Survey
+                    {{ evaluation.survey.title }}
                   </VListItemSubtitle>
 
                   <template #append>
-                    <VChip size="small" color="success" variant="tonal">
-                      Active
-                    </VChip>
+                    <VBtn size="small" color="primary" variant="tonal">
+                      Evaluate
+                    </VBtn>
                   </template>
                 </VListItem>
 
-                <VDivider v-if="index < upcomingSurveys.length - 1" />
+                <VDivider v-if="index < pendingEvaluations.length - 1" />
               </template>
             </VList>
           </VCard>

@@ -251,7 +251,10 @@ const endTimeValue = computed({
 const fetchAcademicTerms = async () => {
   try {
     const res = await $api('/items/academicTerms', {
-      params: { sort: '-schoolYear' },
+      params: {
+        filter: { status: { _eq: 'Active' } },
+        sort: '-schoolYear',
+      },
     })
     academicTerms.value = res.data || []
   }
@@ -519,9 +522,6 @@ onMounted(() => {
             <VIcon icon="ri-user-settings-line" size="64" color="medium-emphasis" class="mb-4" />
             <p class="text-h6 text-medium-emphasis mb-2">No Dean Evaluations</p>
             <p class="text-body-2 text-medium-emphasis mb-4">Create your first evaluation to start collecting feedback</p>
-            <VBtn color="primary" prepend-icon="ri-add-line" @click="openCreateDialog">
-              Create Evaluation
-            </VBtn>
           </div>
         </template>
       </VDataTable>

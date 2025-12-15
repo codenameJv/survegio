@@ -183,19 +183,30 @@ const getDepartment = (classItem: ClassItem): string => {
   return ''
 }
 
-// Get student count - handles junction table structure
+// Get student count - handles junction table structure with deduplication
 const getStudentCount = (classItem: ClassItem): number => {
   if (!classItem.student_id || !Array.isArray(classItem.student_id))
     return 0
 
-  // Count valid student entries from junction table
-  return classItem.student_id.filter((item: any) => {
-    if (typeof item === 'number')
-      return true
-    if (typeof item === 'object' && item !== null)
-      return item.students_id || item.id
-    return false
-  }).length
+  // Extract unique student IDs from junction table to avoid duplicates
+  const uniqueStudentIds = new Set<number>()
+
+  for (const item of classItem.student_id) {
+    let studentId: number | null = null
+
+    if (typeof item === 'number') {
+      studentId = item
+    }
+    else if (typeof item === 'object' && item !== null) {
+      studentId = item.students_id || item.id || null
+    }
+
+    if (studentId !== null) {
+      uniqueStudentIds.add(studentId)
+    }
+  }
+
+  return uniqueStudentIds.size
 }
 
 // Get selected department title for display
@@ -343,12 +354,13 @@ const fetchClasses = async () => {
   }
 }
 
-// Fetch academic terms
+// Fetch academic terms (only active)
 const fetchAcademicTerms = async () => {
   try {
     const res = await $api('/items/academicTerms', {
       params: {
         fields: ['id', 'schoolYear', 'semester', 'status'],
+        filter: { status: { _eq: 'Active' } },
         sort: '-schoolYear',
       },
     })
@@ -532,14 +544,16 @@ const saveClass = async () => {
   }
 }
 
-// Delete class and associated students
+// Delete class (keeps students but removes their class association)
 const deleteClass = async () => {
   if (!selectedClass.value?.id)
     return
 
   try {
+    const classId = selectedClass.value.id
+
     // First, fetch the class with student IDs
-    const classRes = await $api(`/items/classes/${selectedClass.value.id}`, {
+    const classRes = await $api(`/items/classes/${classId}`, {
       params: {
         fields: ['student_id.students_id'],
       },
@@ -550,22 +564,38 @@ const deleteClass = async () => {
       .map((item: any) => item.students_id?.id || item.students_id || item.id)
       .filter((id: any) => typeof id === 'number')
 
-    // Delete all students associated with this class
+    // Remove class association from each student (instead of deleting students)
     if (studentIds.length > 0) {
       for (const studentId of studentIds) {
         try {
+          // Get current class associations for this student
+          const studentRes = await $api(`/items/students/${studentId}`, {
+            params: { fields: ['class_id.*'] },
+          })
+
+          // Get all class IDs except the one being deleted
+          const remainingClassIds: number[] = (studentRes.data?.class_id || [])
+            .map((item: any) => item.classes_id || item.id || item)
+            .filter((id: any) => typeof id === 'number' && id !== classId)
+
+          // Update student with remaining class associations
           await $api(`/items/students/${studentId}`, {
-            method: 'DELETE',
+            method: 'PATCH',
+            body: {
+              class_id: remainingClassIds.length > 0
+                ? remainingClassIds.map(id => ({ classes_id: id }))
+                : [],
+            },
           })
         }
         catch (err) {
-          console.error(`Failed to delete student ${studentId}:`, err)
+          console.error(`Failed to update student ${studentId}:`, err)
         }
       }
     }
 
     // Delete the class
-    await $api(`/items/classes/${selectedClass.value.id}`, {
+    await $api(`/items/classes/${classId}`, {
       method: 'DELETE',
     })
 
@@ -807,6 +837,7 @@ const findOrCreateStudent = async (studentData: ImportedStudent, departmentId: n
       },
     })
 
+    // If student exists, just return their ID (don't update department)
     if (existingRes.data && existingRes.data.length > 0)
       return existingRes.data[0].id
   }
@@ -814,15 +845,15 @@ const findOrCreateStudent = async (studentData: ImportedStudent, departmentId: n
     console.error('Error checking existing student:', error)
   }
 
-  // Create new student
+  // Create new student with department set only on initial creation
   const studentBody: any = {
     student_number: studentData.studentNo,
     first_name: studentData.firstName,
     middle_name: studentData.middleInitial || '',
     last_name: studentData.lastName,
-    email: studentData.email || `${studentData.studentNo}@student.edu`, // Use imported email or generate default
-    gender: studentData.gender || '', // Use imported gender
-    birthdate: '', // Unknown from CSV
+    email: studentData.email || `${studentData.studentNo}@student.edu`,
+    gender: studentData.gender || '',
+    birthdate: '',
     is_active: 'Active',
   }
 
@@ -946,22 +977,38 @@ const executeImport = async () => {
     details.push('Associating students with class...')
     for (const studentId of studentIds) {
       try {
-        // Get current class associations
+        // Get current class associations with full junction table data
         const studentRes = await $api(`/items/students/${studentId}`, {
           params: { fields: ['class_id.*'] },
         })
 
-        const existingClassIds: number[] = (studentRes.data?.class_id || [])
-          .map((item: any) => item.classes_id || item.id || item)
-          .filter((id: any) => typeof id === 'number')
+        const existingEntries = studentRes.data?.class_id || []
+
+        // Check if already associated with this class
+        const alreadyAssociated = existingEntries.some((item: any) => {
+          const cId = item.classes_id || item.id || item
+          return cId === classId
+        })
 
         // Add new class if not already associated
-        if (!existingClassIds.includes(classId)) {
-          const allClassIds = [...existingClassIds, classId]
+        if (!alreadyAssociated) {
+          // Preserve existing junction entries (with their IDs) and add new one
+          const updatedClassIds = [
+            ...existingEntries.map((item: any) => {
+              // Keep existing entries with their junction table IDs
+              if (typeof item === 'object' && item !== null && item.id) {
+                return { id: item.id, classes_id: item.classes_id }
+              }
+              // Handle plain class IDs
+              return { classes_id: typeof item === 'number' ? item : item.classes_id || item.id }
+            }),
+            { classes_id: classId }, // Add new class without junction ID
+          ]
+
           await $api(`/items/students/${studentId}`, {
             method: 'PATCH',
             body: {
-              class_id: allClassIds.map(id => ({ classes_id: id })),
+              class_id: updatedClassIds,
             },
           })
         }
@@ -1328,12 +1375,12 @@ onMounted(() => {
           </p>
           <VAlert
             v-if="selectedClass"
-            type="warning"
+            type="info"
             variant="tonal"
             density="compact"
             class="mb-0"
           >
-            This will also delete all {{ getStudentCount(selectedClass) }} student(s) enrolled in this class. This action cannot be undone.
+            The {{ getStudentCount(selectedClass) }} student(s) enrolled in this class will be kept, but their association to this class will be removed.
           </VAlert>
         </VCardText>
 

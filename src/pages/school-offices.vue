@@ -34,7 +34,6 @@ const form = ref<SchoolOffice>({
 // Table headers
 const headers = [
   { title: 'Office Name', key: 'name', sortable: true },
-  { title: 'Description', key: 'description', sortable: false },
   { title: 'Status', key: 'is_active', sortable: true, align: 'center' as const },
   { title: 'Actions', key: 'actions', sortable: false, align: 'center' as const },
 ]
@@ -199,12 +198,6 @@ onMounted(() => {
           <span class="font-weight-medium">{{ item.name }}</span>
         </template>
 
-        <template #item.description="{ item }">
-          <span class="text-body-2 text-medium-emphasis">
-            {{ item.description || '-' }}
-          </span>
-        </template>
-
         <template #item.is_active="{ item }">
           <VChip
             :color="item.is_active ? 'success' : 'error'"
@@ -276,15 +269,6 @@ onMounted(() => {
                 placeholder="e.g., Registrar, Cashier, Library"
                 variant="outlined"
                 :rules="[v => !!v || 'Office name is required']"
-              />
-            </VCol>
-            <VCol cols="12">
-              <VTextarea
-                v-model="form.description"
-                label="Description"
-                placeholder="Brief description of the office"
-                variant="outlined"
-                rows="3"
               />
             </VCol>
             <VCol cols="12">

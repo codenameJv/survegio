@@ -17,11 +17,6 @@ interface AcademicTerm {
   status: string
 }
 
-interface ResponseTrend {
-  date: string
-  studentCount: number
-  deanCount: number
-}
 
 // State
 const isLoading = ref(true)
@@ -36,83 +31,69 @@ const stats = ref({
 })
 
 const currentTerm = ref<AcademicTerm | null>(null)
-const responseTrends = ref<ResponseTrend[]>([])
+const completionStats = ref({
+  completed: 0,
+  pending: 0,
+})
 
 const vuetifyTheme = useTheme()
 
-// Chart options
+// Pie Chart options for completion status
 const chartOptions = computed(() => {
   const isDark = vuetifyTheme.current.value.dark
 
   return {
     chart: {
-      type: 'area',
-      toolbar: { show: false },
-      sparkline: { enabled: false },
+      type: 'pie',
       background: 'transparent',
     },
-    colors: ['#7367F0', '#28C76F'],
-    dataLabels: { enabled: false },
-    stroke: {
-      curve: 'smooth',
-      width: 2,
-    },
-    fill: {
-      type: 'gradient',
-      gradient: {
-        shadeIntensity: 0.8,
-        opacityFrom: 0.5,
-        opacityTo: 0.1,
+    labels: ['Completed', 'Pending'],
+    colors: ['#28C76F', '#FF9F43'],
+    dataLabels: {
+      enabled: true,
+      formatter: (val: number) => `${val.toFixed(1)}%`,
+      style: {
+        fontSize: '14px',
+        fontWeight: 'bold',
       },
-    },
-    xaxis: {
-      categories: responseTrends.value.map((t: ResponseTrend) => t.date),
-      labels: {
-        style: {
-          colors: isDark ? '#b4b7bd' : '#6e6b7b',
-          fontSize: '12px',
-        },
-      },
-      axisBorder: { show: false },
-      axisTicks: { show: false },
-    },
-    yaxis: {
-      labels: {
-        style: {
-          colors: isDark ? '#b4b7bd' : '#6e6b7b',
-          fontSize: '12px',
-        },
-        formatter: (val: number) => Math.floor(val).toString(),
-      },
-      min: 0,
-    },
-    grid: {
-      borderColor: isDark ? '#3b4253' : '#e9e9e9',
-      strokeDashArray: 3,
-      padding: { top: -20 },
+      dropShadow: { enabled: false },
     },
     legend: {
-      position: 'top',
-      horizontalAlign: 'right',
+      position: 'bottom',
       labels: {
         colors: isDark ? '#b4b7bd' : '#6e6b7b',
       },
     },
     tooltip: {
       theme: isDark ? 'dark' : 'light',
+      y: {
+        formatter: (val: number) => `${val} responses`,
+      },
     },
+    stroke: {
+      width: 2,
+      colors: [isDark ? '#25293c' : '#ffffff'],
+    },
+    plotOptions: {
+      pie: {
+        donut: {
+          size: '0%',
+        },
+      },
+    },
+    responsive: [{
+      breakpoint: 480,
+      options: {
+        chart: { width: 280 },
+        legend: { position: 'bottom' },
+      },
+    }],
   }
 })
 
 const chartSeries = computed(() => [
-  {
-    name: 'Student Responses',
-    data: responseTrends.value.map((t: ResponseTrend) => t.studentCount),
-  },
-  {
-    name: 'Dean Evaluations',
-    data: responseTrends.value.map((t: ResponseTrend) => t.deanCount),
-  },
+  completionStats.value.completed,
+  completionStats.value.pending,
 ])
 
 // Fetch all dashboard data
@@ -122,7 +103,7 @@ const fetchDashboardData = async () => {
     await Promise.all([
       fetchStats(),
       fetchCurrentTerm(),
-      fetchResponseTrends(),
+      fetchCompletionStats(),
     ])
   }
   catch (error) {
@@ -130,87 +111,6 @@ const fetchDashboardData = async () => {
   }
   finally {
     isLoading.value = false
-  }
-}
-
-// Fetch response trends for the last 7 days
-const fetchResponseTrends = async () => {
-  try {
-    // Generate last 7 days
-    const days: ResponseTrend[] = []
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date()
-      date.setDate(date.getDate() - i)
-      days.push({
-        date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        studentCount: 0,
-        deanCount: 0,
-      })
-    }
-
-    // Get date 7 days ago
-    const sevenDaysAgo = new Date()
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-    const filterDate = sevenDaysAgo.toISOString()
-
-    // Fetch student responses from last 7 days
-    const studentRes = await $api('/items/StudentSurveyResponses', {
-      params: {
-        filter: { submitted_at: { _gte: filterDate } },
-        fields: ['submitted_at'],
-        limit: -1,
-      },
-    })
-
-    // Count student responses by day
-    for (const r of studentRes.data || []) {
-      if (r.submitted_at) {
-        const responseDate = new Date(r.submitted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-        const dayIndex = days.findIndex(d => d.date === responseDate)
-        if (dayIndex !== -1)
-          days[dayIndex].studentCount++
-      }
-    }
-
-    // Fetch dean responses from last 7 days
-    try {
-      const deanRes = await $api('/items/DeanSurveyResponses', {
-        params: {
-          filter: { submitted_at: { _gte: filterDate } },
-          fields: ['submitted_at'],
-          limit: -1,
-        },
-      })
-
-      for (const r of deanRes.data || []) {
-        if (r.submitted_at) {
-          const responseDate = new Date(r.submitted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-          const dayIndex = days.findIndex(d => d.date === responseDate)
-          if (dayIndex !== -1)
-            days[dayIndex].deanCount++
-        }
-      }
-    }
-    catch {
-      // Dean collection might not exist
-    }
-
-    responseTrends.value = days
-  }
-  catch (error) {
-    console.error('Failed to fetch response trends:', error)
-    // Set empty data for 7 days
-    const days: ResponseTrend[] = []
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date()
-      date.setDate(date.getDate() - i)
-      days.push({
-        date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        studentCount: 0,
-        deanCount: 0,
-      })
-    }
-    responseTrends.value = days
   }
 }
 
@@ -314,6 +214,52 @@ const fetchCurrentTerm = async () => {
   }
 }
 
+// Fetch completion stats for pie chart
+const fetchCompletionStats = async () => {
+  try {
+    // Get active student surveys with their expected respondents
+    const surveysRes = await $api('/items/StudentEvaluationSurvey', {
+      params: {
+        filter: { is_active: { _eq: 'Active' } },
+        fields: ['id', 'classes.classes_id.student_id', 'students.students_id'],
+      },
+    })
+
+    let totalExpected = 0
+    for (const survey of surveysRes.data || []) {
+      // Count from classes
+      if (survey.classes && Array.isArray(survey.classes)) {
+        for (const classItem of survey.classes) {
+          if (classItem.classes_id?.student_id) {
+            totalExpected += Array.isArray(classItem.classes_id.student_id)
+              ? classItem.classes_id.student_id.length
+              : 0
+          }
+        }
+      }
+      // Count from direct student assignments
+      if (survey.students && Array.isArray(survey.students)) {
+        totalExpected += survey.students.length
+      }
+    }
+
+    // Get completed responses
+    const responsesRes = await $api('/items/StudentSurveyResponses', {
+      params: { aggregate: { count: '*' } },
+    })
+    const completed = responsesRes.data?.[0]?.count ?? 0
+
+    completionStats.value = {
+      completed,
+      pending: Math.max(0, totalExpected - completed),
+    }
+  }
+  catch (error) {
+    console.error('Failed to fetch completion stats:', error)
+    completionStats.value = { completed: 0, pending: 0 }
+  }
+}
+
 onMounted(() => {
   fetchDashboardData()
 })
@@ -403,22 +349,22 @@ onMounted(() => {
         </VCol>
       </VRow>
 
-      <!-- Response Trends Chart -->
+      <!-- Survey Completion Status Pie Chart -->
       <VRow class="mb-6">
-        <VCol cols="12">
+        <VCol cols="12" md="6">
           <VCard>
             <VCardTitle class="d-flex align-center pa-5">
-              <VIcon icon="ri-line-chart-line" class="me-2" />
-              Response Trends
-              <span class="text-caption text-medium-emphasis ms-2">(Last 7 days)</span>
+              <VIcon icon="ri-pie-chart-line" class="me-2" />
+              Survey Completion Status
             </VCardTitle>
 
             <VDivider />
 
-            <VCardText class="pa-4">
+            <VCardText class="pa-4 d-flex justify-center">
               <VueApexCharts
-                type="area"
-                height="280"
+                type="pie"
+                height="320"
+                width="400"
                 :options="chartOptions"
                 :series="chartSeries"
               />

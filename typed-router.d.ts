@@ -66,8 +66,11 @@ declare module 'vue-router/auto-routes' {
     'surveys': RouteRecordInfo<'surveys', '/surveys', Record<never, never>, Record<never, never>>,
     'surveys-dean-evaluation': RouteRecordInfo<'surveys-dean-evaluation', '/surveys/dean-evaluation', Record<never, never>, Record<never, never>>,
     'surveys-dean-evaluation-id': RouteRecordInfo<'surveys-dean-evaluation-id', '/surveys/dean-evaluation/:id', { id: ParamValue<true> }, { id: ParamValue<false> }>,
+    'surveys-dean-evaluation-professor-survey-id-professor-id': RouteRecordInfo<'surveys-dean-evaluation-professor-survey-id-professor-id', '/surveys/dean-evaluation/professor-:surveyId-:professorId', { surveyId: ParamValue<true>, professorId: ParamValue<true> }, { surveyId: ParamValue<false>, professorId: ParamValue<false> }>,
     'surveys-student-evaluation': RouteRecordInfo<'surveys-student-evaluation', '/surveys/student-evaluation', Record<never, never>, Record<never, never>>,
     'surveys-student-evaluation-id': RouteRecordInfo<'surveys-student-evaluation-id', '/surveys/student-evaluation/:id', { id: ParamValue<true> }, { id: ParamValue<false> }>,
+    'surveys-student-evaluation-office-survey-id-office-id': RouteRecordInfo<'surveys-student-evaluation-office-survey-id-office-id', '/surveys/student-evaluation/office-:surveyId-:officeId', { surveyId: ParamValue<true>, officeId: ParamValue<true> }, { surveyId: ParamValue<false>, officeId: ParamValue<false> }>,
+    'surveys-student-evaluation-professor-survey-id-professor-id': RouteRecordInfo<'surveys-student-evaluation-professor-survey-id-professor-id', '/surveys/student-evaluation/professor-:surveyId-:professorId', { surveyId: ParamValue<true>, professorId: ParamValue<true> }, { surveyId: ParamValue<false>, professorId: ParamValue<false> }>,
     'teachers': RouteRecordInfo<'teachers', '/teachers', Record<never, never>, Record<never, never>>,
   }
 }

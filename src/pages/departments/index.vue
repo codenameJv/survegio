@@ -30,10 +30,16 @@ interface Department {
   classes_id?: number[] | null
 }
 
+interface ClassItem {
+  id: number
+  department_id: any[]
+}
+
 // State
 const departments = ref<Department[]>([])
 const programs = ref<Program[]>([])
 const teachers = ref<Teacher[]>([])
+const classes = ref<ClassItem[]>([])
 const isLoading = ref(false)
 const isDialogOpen = ref(false)
 const isDeleteDialogOpen = ref(false)
@@ -56,6 +62,7 @@ const headers = [
   { title: 'Department Name', key: 'name', sortable: true },
   { title: 'Dean', key: 'dean', sortable: false },
   { title: 'No. of Teachers', key: 'teacherCount', sortable: true, align: 'center' as const },
+  { title: 'No. of Classes', key: 'classCount', sortable: true, align: 'center' as const },
   { title: 'Actions', key: 'actions', sortable: false, align: 'center' as const },
 ]
 
@@ -121,6 +128,25 @@ const getDean = (department: Department): Teacher | null => {
 // Get teacher count
 const getTeacherCount = (department: Department): number => {
   return getTeachers(department).length
+}
+
+// Get class count for a department
+const getClassCount = (department: Department): number => {
+  if (!department.id)
+    return 0
+
+  return classes.value.filter((classItem) => {
+    if (!classItem.department_id || !Array.isArray(classItem.department_id))
+      return false
+
+    return classItem.department_id.some((item: any) => {
+      if (typeof item === 'number')
+        return item === department.id
+      if (typeof item === 'object' && item !== null)
+        return (item.Department_id || item.id) === department.id
+      return false
+    })
+  }).length
 }
 
 // Get list of Dean IDs already assigned to other departments
@@ -202,6 +228,22 @@ const fetchTeachers = async () => {
   }
   catch (error) {
     console.error('Failed to fetch teachers:', error)
+  }
+}
+
+// Fetch classes for counting
+const fetchClasses = async () => {
+  try {
+    const res = await $api('/items/classes', {
+      params: {
+        fields: ['id', 'department_id.*'],
+      },
+    })
+
+    classes.value = res.data || []
+  }
+  catch (error) {
+    console.error('Failed to fetch classes:', error)
   }
 }
 
@@ -328,6 +370,7 @@ onMounted(() => {
   fetchDepartments()
   fetchPrograms()
   fetchTeachers()
+  fetchClasses()
 })
 </script>
 
@@ -379,6 +422,12 @@ onMounted(() => {
         <template #item.teacherCount="{ item }">
           <span :class="getTeacherCount(item) > 0 ? 'font-weight-medium' : 'text-medium-emphasis'">
             {{ getTeacherCount(item) }}
+          </span>
+        </template>
+
+        <template #item.classCount="{ item }">
+          <span :class="getClassCount(item) > 0 ? 'font-weight-medium' : 'text-medium-emphasis'">
+            {{ getClassCount(item) }}
           </span>
         </template>
 

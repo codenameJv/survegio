@@ -256,14 +256,7 @@ onMounted(() => {
       <!-- Teachers List Card -->
       <VCard>
         <VCardTitle class="d-flex align-center pa-6">
-          <span class="text-h5">Assigned Teachers</span>
-          <VChip
-            color="primary"
-            size="small"
-            class="ms-2"
-          >
-            {{ teachers.length }}
-          </VChip>
+          <span class="text-h5">Faculty Members</span>
           <VSpacer />
           <VTextField
             v-model="search"

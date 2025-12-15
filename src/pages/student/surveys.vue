@@ -217,7 +217,6 @@ const fetchPendingEvaluations = async () => {
           // Office info
           'office_id.id',
           'office_id.name',
-          'office_id.description',
           // Student assignment for office-based surveys
           'students.students_id',
           // Junction table format for classes

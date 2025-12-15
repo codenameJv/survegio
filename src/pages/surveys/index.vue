@@ -181,7 +181,10 @@ const getProgress = (survey: DeanSurvey): number => {
 const fetchAcademicTerms = async () => {
   try {
     const res = await $api('/items/academicTerms', {
-      params: { sort: '-schoolYear' },
+      params: {
+        filter: { status: { _eq: 'Active' } },
+        sort: '-schoolYear',
+      },
     })
     academicTerms.value = res.data || []
   }
